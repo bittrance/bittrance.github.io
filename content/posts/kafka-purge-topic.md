@@ -1,13 +1,11 @@
 ---
 title: "Truncating a Kafka topic"
 date: 2021-04-02T20:43:28+02:00
-draft: true
+draft: false
 ---
-Sometimes, you want to get rid of messages from a Kafka topic. Perhaps you have consumers that always start from the beginning, or you realize the whole topic is full of crap messages. In theory, you can easily delete a Kafka topic like so:
-```bash
-$ kafka-topic.sh --boostrap-server kafka:9092 --topic some-topic --delete
-```
-However, this is quite disruptive and is likely to fail both producers and consumers on this topic even if you quickly recreate the topic. There is no telling what consumer groups tracking their own offsets or having custom rebalancing logic might do.
+Sometimes, you want to get rid of messages from a Kafka topic. Perhaps you have consumers that always start from the beginning, or you realize the whole topic is full of messages with sensitive data that must not reach consumers.
+
+In theory, you can easily delete a Kafka topic. However, this is quite disruptive and is likely to fail both producers and consumers on this topic even if you quickly recreate the topic. There is no telling what consumer groups tracking their own offsets or having custom rebalancing logic might do.
 
 Instead, the best way to truncate a Kafka topic is to temporarily set that topic's retention time (`rentention.ms` config variable) to a low value and let Kafka purge all messages in the topic. This will not affect a running consumer group, so long as the retention time is higher than its time lag plus its processing time. Newly arriving consumer groups will see only messages that arrive after the truncate.
 
@@ -20,6 +18,7 @@ $ kafka-configs.sh --zookeeper zookeeper:2181 --alter \
     --entity-name some-topic \
     --add-config retention.ms=1000
 ```
+
 Since the log cleaner runs periodically, you have to wait for a bit before data is actually deleted. When it runs, you will see the following in the log:
 ```
 [2021-03-31 19:43:15,739] INFO [Log partition=some-topic-0, dir=/kafka/kafka-logs-906aad843b03] Rolled new log segment at offset 216 in 3 ms. (kafka.log.Log)
