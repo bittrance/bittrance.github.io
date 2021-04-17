@@ -1,0 +1,48 @@
+<!doctype html><html class=no-js lang><head><meta charset=utf-8><meta http-equiv=x-ua-compatible content="ie=edge"><meta name=viewport content="width=device-width,initial-scale=1,shrink-to-fit=no,maximum-scale=1"><title>Local testing Kubernetes cluster with Kind - Bittrance blog</title><meta name=keywords content><meta name=description content><link rel=stylesheet href=/css/highlight.min.css><link rel=stylesheet href=/css/normalize.css><link rel=stylesheet href=/css/diello.css><link rel=stylesheet href=/css/main.css></head><body><!--[if lte IE 9]><p class=browserupgrade>You are using an <strong>outdated</strong> browser. Please <a href=https://browsehappy.com/>upgrade your browser</a> to improve your experience and security.</p><![endif]--><div class=flex-column><div class=ads></div><div class=home><div class=logo><h1><a href=/>Bittrance blog</a></h1></div><div class=navigation><a href=/>HOME</a>
+<a href=javascript:void(0); class=current>ARTICLE</a></div><div><article><h3>Local testing Kubernetes cluster with Kind</h3><div class=less><time>Published: Saturday, Apr 17, 2021</time>&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;3 minute read&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;Using 465 words</div><div class=em><p>Should you not already have a nice cluster to test on, you can spin up a local Kubernetes cluster using Kind. Kind uses Docker containers to represent nodes. Unlike minikube, this one boots up in less than a minute and can easily be extended with additional pretend nodes, making it superior for working with distributed applications.</p><p>There are several ways to install kind. If you are a Go developer, the easiest way may be to</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>GO111MODULE<span style=color:#f92672>=</span><span style=color:#e6db74>&#34;on&#34;</span> go get sigs.k8s.io/kind@v0.10.0
+</code></pre></div><p>Alternatively, since it is a Go static binary, you can download it from <a href=https://github.com/kubernetes-sigs/kind/releases/tag/v0.10.0>Kind&rsquo;s Github release page</a>.</p><p>Here is a good starting configuration for your test cluster:</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-yaml data-lang=yaml><span style=color:#f92672>kind</span>: <span style=color:#ae81ff>Cluster</span>
+<span style=color:#f92672>apiVersion</span>: <span style=color:#ae81ff>kind.x-k8s.io/v1alpha4</span>
+<span style=color:#f92672>nodes</span>:
+  - <span style=color:#f92672>role</span>: <span style=color:#ae81ff>control-plane</span>
+    <span style=color:#f92672>kubeadmConfigPatches</span>:
+      - |<span style=color:#e6db74>
+</span><span style=color:#e6db74>        kind: InitConfiguration
+</span><span style=color:#e6db74>        nodeRegistration:
+</span><span style=color:#e6db74>          kubeletExtraArgs:
+</span><span style=color:#e6db74>            node-labels: &#34;ingress-ready=true&#34;</span>        
+    <span style=color:#f92672>extraPortMappings</span>:
+      - <span style=color:#f92672>containerPort</span>: <span style=color:#ae81ff>80</span>
+        <span style=color:#f92672>hostPort</span>: <span style=color:#ae81ff>80</span>
+        <span style=color:#f92672>protocol</span>: <span style=color:#ae81ff>TCP</span>
+  - <span style=color:#f92672>role</span>: <span style=color:#ae81ff>worker</span>
+  - <span style=color:#f92672>role</span>: <span style=color:#ae81ff>worker</span>
+  - <span style=color:#f92672>role</span>: <span style=color:#ae81ff>worker</span>
+
+</code></pre></div><p>Build a cluster from this definition:</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>kind create cluster --config kind-cluster.yaml
+</code></pre></div><p>We should now have a local Kubernetes cluster. The command above updates the kubectl config file and sets itself as current context, so at this point, it should be possible to do this:</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>kubectl get pods -A
+</code></pre></div><p>The pod list looks something like this:</p><pre><code>NAMESPACE            NAME                                         READY   STATUS    RESTARTS   AGE
+kube-system          coredns-74ff55c5b-m9tmn                      1/1     Running   0          100s
+kube-system          coredns-74ff55c5b-s2kkb                      1/1     Running   0          100s
+kube-system          etcd-kind-control-plane                      1/1     Running   0          107s
+kube-system          kindnet-btfx8                                1/1     Running   0          86s
+kube-system          kindnet-cq9hn                                1/1     Running   0          100s
+kube-system          kindnet-dzhlz                                1/1     Running   0          86s
+kube-system          kindnet-h6dwx                                1/1     Running   1          86s
+kube-system          kube-apiserver-kind-control-plane            1/1     Running   0          107s
+kube-system          kube-controller-manager-kind-control-plane   1/1     Running   0          107s
+kube-system          kube-proxy-6ttn4                             1/1     Running   0          86s
+kube-system          kube-proxy-7dcl5                             1/1     Running   0          100s
+kube-system          kube-proxy-r55lq                             1/1     Running   0          86s
+kube-system          kube-proxy-rwtf7                             1/1     Running   0          86s
+kube-system          kube-scheduler-kind-control-plane            1/1     Running   0          107s
+local-path-storage   local-path-provisioner-78776bfc44-blqdz      1/1     Running   0          100s
+</code></pre><p>At Docker level, it looks like this:</p><pre><code>CONTAINER ID        IMAGE                  COMMAND                  CREATED             STATUS              PORTS                                           NAMES
+79c77b7c6bb7        kindest/node:v1.20.2   &quot;/usr/local/bin/entr…&quot;   6 minutes ago       Up 6 minutes                                                        kind-worker2
+85266fde34c0        kindest/node:v1.20.2   &quot;/usr/local/bin/entr…&quot;   6 minutes ago       Up 6 minutes                                                        kind-worker3
+83d5e58746a3        kindest/node:v1.20.2   &quot;/usr/local/bin/entr…&quot;   6 minutes ago       Up 6 minutes                                                        kind-worker
+0f3772edeb62        kindest/node:v1.20.2   &quot;/usr/local/bin/entr…&quot;   6 minutes ago       Up 6 minutes        0.0.0.0:80-&gt;80/tcp, 127.0.0.1:32941-&gt;6443/tcp   kind-control-plane
+</code></pre><p>In order to be able to expose services to the outside world (i.e. to you as developer), we need an ingress controller. Let&rsquo;s get <a href=https://www.getambassador.io/>Ambdassador</a>. Ingress controllers tend to require custom annotations to do what you want, but this gives us some ability to verify our manifests during development.</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>kubectl apply -f https://github.com/datawire/ambassador-operator/releases/latest/download/ambassador-operator-crds.yaml
+kubectl apply -n ambassador -f https://github.com/datawire/ambassador-operator/releases/latest/download/ambassador-operator-kind.yaml
+</code></pre></div><p>Kind does not come with a metrics-server, but since it is included in e.g. AKS, some manifests assume it is installed. Let&rsquo;s install metrics-server manually.</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.4.2/components.yaml
+</code></pre></div><p>As noted in <a href=https://github.com/kubernetes-sigs/kind/issues/398>Resource Metrics API (metrics-server) #398</a>, we need to patch the resulting deployment to not verify TLS certificates.</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>kubectl patch deployment metrics-server -n kube-system -p <span style=color:#e6db74>&#39;{&#34;spec&#34;:{&#34;template&#34;:{&#34;spec&#34;:{&#34;containers&#34;:[{&#34;name&#34;:&#34;metrics-server&#34;,&#34;args&#34;:[&#34;--cert-dir=/tmp&#34;, &#34;--secure-port=4443&#34;, &#34;--kubelet-insecure-tls&#34;,&#34;--kubelet-preferred-address-types=InternalIP&#34;]}]}}}}&#39;</span>
+</code></pre></div></div><br><br><div class=less>Page link: <a href=/posts/install-kind/ class=pagelink>/posts/install-kind/</a></div><div class=line-dotted></div><article></div><footer><div>&#169; 2019 by <a href=https://github.com/guangmean/Niello target=_blank>guangmean</a>. All Rights Reserved.</div></footer></div><div class=ads></div></div><script src=/js/vendor/modernizr-3.6.0.min.js></script><script src=/js/vendor/jquery-3.3.1.min.js></script><script>window.jQuery||document.write('<script src="/js/vendor/jquery-3.3.1.min.js"><\/script>')</script><script src=/js/plugins.js></script><script src=/js/main.js></script><script src=/js/vendor/highlight.min.js></script><script>hljs.initHighlightingOnLoad()</script></body></html>
