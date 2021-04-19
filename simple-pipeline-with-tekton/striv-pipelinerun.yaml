@@ -1,0 +1,17 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  name: deploy-striv-run-1
+spec:
+  pipelineRef:
+    name: deploy-striv # We want to run this pipeline
+  workspaces:
+    - # This describes how to provide the workspace that the pipeline requires
+      name: sources
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi
