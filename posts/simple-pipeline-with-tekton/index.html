@@ -92,7 +92,7 @@ Write this to a file and apply it to your Kubernetes cluster:</p><div class=high
             <span style=color:#f92672>requests</span>:
               <span style=color:#f92672>storage</span>: <span style=color:#ae81ff>1Gi</span>
 
-</code></pre></div><p>Navigating to the <a href=http://http://tekton.lvh.me>Tekton UI</a>, if all went well, the run will be green:</p><p><img src=/simple-pipeline-with-tekton/deploy-striv-run-1.png alt="deploy-striv run successful" title="deploy-striv run successful"></p><p>Each task run by the pipeline is just a pod. We can use <code>kubectl get pods</code> to inspect them:</p><pre><code>NAME                                                              READY   STATUS      RESTARTS   AGE
+</code></pre></div><p>Navigating to the <a href=http://tekton.lvh.me>Tekton UI</a>, if all went well, the run will be green:</p><p><img src=/simple-pipeline-with-tekton/deploy-striv-run-1.png alt="deploy-striv run successful" title="deploy-striv run successful"></p><p>Each task run by the pipeline is just a pod. We can use <code>kubectl get pods</code> to inspect them:</p><pre><code>NAME                                                              READY   STATUS      RESTARTS   AGE
 deploy-striv-run-1-checkout-hmvxb-pod-fqx8b                       0/1     Completed   0          45s
 deploy-striv-run-1-install-frontend-dependencies-2q6nn-po-dzfpb   0/1     Completed   0          31s
 deploy-striv-run-1-test-frontend-c2779-pod-z642x                  0/1     Completed   0           8s
