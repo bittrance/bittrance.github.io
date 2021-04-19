@@ -1,0 +1,72 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: striv-build
+spec:
+  workspaces:
+    - name: sources
+  tasks:
+    - name: checkout
+      taskRef:
+        name: git-clone
+        kind: Task
+      workspaces:
+        - name: output
+          workspace: sources
+      params:
+        - name: url
+          value: https://github.com/bittrance/striv
+        - name: revision
+          value: kubernetes
+    - name: install-frontend-dependencies
+      runAfter: [checkout]
+      taskRef:
+        name: npm
+        kind: Task
+      workspaces:
+        - name: source
+          workspace: sources
+      params:
+        - name: IMAGE
+          value: node:15.3
+        - name: ARGS
+          value: [clean-install]
+    - name: test-frontend
+      runAfter: [install-frontend-dependencies]
+      taskRef:
+        name: npm
+        kind: Task
+      workspaces:
+        - name: source
+          workspace: sources
+      params:
+        - name: IMAGE
+          value: node:15.3
+        - name: ARGS
+          value: [run, test:unit]
+    - name: write-testing-databases-conf
+      runAfter: [checkout]
+      taskRef:
+        name: write-file
+        kind: Task
+      workspaces:
+        - name: output
+          workspace: sources
+      params:
+        - name: filename
+          value: testing-databases.json
+        - name: contents
+          value: '[["sqlite", {"database": ":memory:"}]]'
+    - name: test-backend
+      runAfter: [write-testing-databases-conf]
+      taskRef:
+        name: pytest
+        kind: Task
+      workspaces:
+        - name: source
+          workspace: sources
+      params:
+        - name: PYTHON
+          value: "3.7"
+        - name: REQUIREMENTS_FILE
+          value: requirements-dev.txt
