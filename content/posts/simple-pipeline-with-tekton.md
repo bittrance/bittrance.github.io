@@ -1,10 +1,14 @@
 ---
 title: "Creating a simple build pipeline with Tekton"
 date: 2021-04-19T21:48:09+02:00
+lastmod: 2021-04-20T22:08:00+02:00
+summary: |
+  Tekton is a continuous integration and delivery platform on top of Kubernetes. This blog post will 
+  explore Tekton's feature set by way of converting a GitHub Actions workflow into a Tekton Pipeline
 ---
 > *Note: This article uses lots of Tekton beta features. Should you discover it in 6 months from now, it is highly likely that something has changed.*
 
-[Tekton](https://tekton.dev) is a continuous integration and delivery platform on top of Kubernetes. It is still under intensive development, but is shaping up to be a real Argo-killer. This blog post will explore Tekton's feature set by way of converting a GitHub Actions workflow into a Tekton Pipeline. It is meant to be the first of a series of Tekton-centered blog posts.
+[Tekton](https://tekton.dev) is a continuous integration and delivery platform on top of Kubernetes. It is still under intensive development, but is shaping up to be a real Argo Workflow killer. This blog post will explore Tekton's feature set by way of converting a GitHub Actions workflow into a Tekton Pipeline. It is meant to be the first of a series of Tekton-centered blog posts.
 
 This post is laid out as a step-by-step instruction. If you want to follow along and do not already have a suitable Kubernetes cluster on hand, you can [install Kind](/posts/install-kind) which will give you a good starting point.
 
