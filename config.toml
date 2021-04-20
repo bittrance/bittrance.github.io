@@ -1,4 +1,18 @@
-baseURL = "http://example.org/"
+baseURL = "https://bittrance.github.io/"
 languageCode = "en-us"
+theme = "m10c"
 title = "Bittrance blog"
-theme = "niello"
+[params]
+author = "Bittrance"
+avatar = "bittrance.jpeg"
+description = "DevOps blog with focus on distributed systems and resiliency engineering."
+[params.style]
+darkColor = "#101818"
+darkestColor = "#300030"
+lightColor = "#f5e3e0"
+lightestColor = "#9090c0"
+primaryColor = "#8080d0"
+[[params.social]]
+icon = "github"
+name = "My Github"
+url = "https://github.com/bittrance"

@@ -1,3 +1,6 @@
 [submodule "themes/niello"]
 	path = themes/niello
 	url = https://github.com/guangmean/Niello.git
+[submodule "themes/m10c"]
+	path = themes/m10c
+	url = https://github.com/vaga/hugo-theme-m10c.git
