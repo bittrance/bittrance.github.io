@@ -7,7 +7,7 @@ spec:
     name: deploy-striv # We want to run this pipeline
   workspaces:
     - # This describes how to provide the workspace that the pipeline requires
-      name: sources
+      name: striv-workspace
       volumeClaimTemplate:
         spec:
           accessModes:
