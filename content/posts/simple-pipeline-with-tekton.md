@@ -126,11 +126,11 @@ checkout <- install-frontend-dependencies <- test-frontend
 
 ## Testing the pipeline
 
-There are more steps to complete before we are done, but we should make sure our pipeline works so far!
+There are more steps to complete before we are done, but we should make sure our pipeline works so far! You can cut together the sections above, or you can download the [deply-striv](/simple-pipeline-with-tekton/deploy-striv.yaml) pipeline and apply it to your cluster.
 
 When you want to invoke a pipeline, you create another custom resource, called a PipelineRun. Executing the pipeline manually helps demonstrate how Tekton works. In the really real world, this should be performed automatically on pushing to the Git repository, but more on that in a later blog post. The Tekton UI cannot yet create new PipelineRun objects, so we create and apply one manually to the cluster:
 
-{{% code file="/static/simple-pipeline-with-tekton/striv-pipelinerun.yaml" language="yaml" %}}
+{{% code file="/static/simple-pipeline-with-tekton/deploy-striv-run-1.yaml" language="yaml" %}}
 
 Navigating to the [Tekton UI](http://tekton.lvh.me), if all went well, the run will be green:
 
