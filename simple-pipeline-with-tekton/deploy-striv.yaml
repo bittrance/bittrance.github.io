@@ -1,0 +1,54 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: deploy-striv
+spec:
+  workspaces:
+    - name: striv-workspace # The invoker will need to provide this workspace
+  tasks:
+    - name: checkout
+      taskRef:
+        # The standard task we installed above
+        name: git-clone
+        kind: Task
+      workspaces:
+        - # This task requires us to provide a workspace where the code
+          # should be checked out. Here we tell Tekton to provide our
+          # "striv-workspace" workspace as the task's "output" workspace.
+          name: output
+          workspace: striv-workspace
+      params:
+        - name: url
+          value: https://github.com/bittrance/striv
+        - # In order for this blog post to be repeatable, we refer to a
+          # particular revision.
+          name: revision
+          value: kubernetes
+    - name: install-frontend-dependencies
+      runAfter: [checkout] # Task dependency within this pipeline
+      taskRef:
+        name: npm
+        kind: Task
+      workspaces:
+        - # The task above called its workspace "output" but this one calls
+          # it "source". Let's hope a convention takes hold...
+          name: source
+          workspace: striv-workspace
+      params:
+        - name: IMAGE
+          value: node:15.3
+        - name: ARGS
+          value: [clean-install] # i.e. npm clean-install
+    - name: test-frontend
+      runAfter: [install-frontend-dependencies]
+      taskRef:
+        name: npm
+        kind: Task
+      workspaces:
+        - name: source
+          workspace: striv-workspace
+      params:
+        - name: IMAGE
+          value: node:15.3
+        - name: ARGS
+          value: [run, test:unit] # i.e. npm run test:unit
