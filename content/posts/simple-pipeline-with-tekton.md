@@ -147,4 +147,4 @@ You can similarly request logs and terminate errant tasks.
 
 ## Next step
 
-This blog post has shown how to get started with using Tekton for continuous integration. There is more to do on the Striv pipeline and there are many more things Tekton can do, but that is for a future blog post.
+This blog post has shown how to get started with using Tekton for continuous integration. The next step to run the backend tests, see the next blog post in this series: [Extending Our Tekton Pipeline](/posts/extending-our-tekton-pipeline/).
