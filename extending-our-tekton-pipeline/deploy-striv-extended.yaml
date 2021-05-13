@@ -1,0 +1,150 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: deploy-striv
+spec:
+  workspaces:
+    - name: striv-workspace # The invoker will need to provide this workspace
+  tasks:
+    - name: checkout
+      taskRef:
+        # The standard task we installed above
+        name: git-clone
+        kind: Task
+      workspaces:
+        - # This task requires us to provide a workspace where the code
+          # should be checked out. Here we tell Tekton to provide our
+          # "striv-workspace" workspace as the task's "output" workspace.
+          name: output
+          workspace: striv-workspace
+      params:
+        - name: url
+          value: https://github.com/bittrance/striv
+        - # In order for this blog post to be repeatable, we refer to a
+          # particular revision.
+          name: revision
+          value: kubernetes
+    - name: install-frontend-dependencies
+      runAfter: [checkout] # Task dependency within this pipeline
+      taskRef:
+        name: npm
+        kind: Task
+      workspaces:
+        - # The task above called its workspace "output" but this one calls
+          # it "source". Let's hope a convention takes hold...
+          name: source
+          workspace: striv-workspace
+      params:
+        - name: IMAGE
+          value: node:15.3
+        - name: ARGS
+          value: [clean-install] # i.e. npm clean-install
+    - name: test-frontend
+      runAfter: [install-frontend-dependencies]
+      taskRef:
+        name: npm
+        kind: Task
+      workspaces:
+        - name: source
+          workspace: striv-workspace
+      params:
+        - name: IMAGE
+          value: node:15.3
+        - name: ARGS
+          value: [run, test:unit] # i.e. npm run test:unit
+    - name: deploy-test-dependencies
+      taskRef:
+        name: kubernetes-actions
+        kind: Task
+      params:
+        - name: script
+          value: |
+            kubectl apply -f - <<EOF
+            apiVersion: v1
+            kind: Service
+            metadata:
+              # Unique name so it won't collide with concurrent runs
+              name: mysql-$(context.pipelineRun.uid)
+              labels:
+                # So we can delete both this and Postgres
+                test-dependencies: $(context.pipelineRun.uid)
+            spec:
+              ports:
+                - name: mysql
+                  port: 3306
+                  targetPort: mysql
+              selector:
+                mysql: $(context.pipelineRun.uid)
+            ---
+            apiVersion: v1
+            kind: Pod
+            metadata:
+              name: mysql-$(context.pipelineRun.uid)
+              labels:
+                # So we can delete both this and Postgres
+                test-dependencies: $(context.pipelineRun.uid)
+                # So the mysql service can find only this pod (and not Postgres)
+                mysql: $(context.pipelineRun.uid)
+            spec:
+              containers:
+                - name: mysql
+                  image: mysql:5.6
+                  ports:
+                    - name: mysql
+                      containerPort: 3306
+                  env:
+                    - name: MYSQL_ROOT_PASSWORD
+                      value: Cmdu1OG2vLfL
+                    - name: MYSQL_DATABASE
+                      value: striv_test
+            EOF
+            kubectl wait pods -l mysql=$(context.pipelineRun.uid) --timeout=30s --for condition=ready
+    - name: write-testing-databases-conf
+      runAfter: [checkout]
+      taskRef:
+        name: write-file
+        kind: Task
+      workspaces:
+        - name: output
+          workspace: striv-workspace
+      params:
+        - name: path
+          value: testing-databases.json
+        - name: contents
+          value: |
+            [
+              ["sqlite", {"database": ":memory:"}],
+              [
+                "mysql",
+                {
+                  "user": "root",
+                  "password": "Cmdu1OG2vLfL",
+                  "host": "mysql-$(context.pipelineRun.uid)",
+                  "database": "striv_test",
+                  "create_database": true
+                }
+              ]
+            ]
+    - name: test-backend
+      runAfter: [write-testing-databases-conf]
+      taskRef:
+        name: pytest
+        kind: Task
+      workspaces:
+        - name: source
+          workspace: striv-workspace
+      params:
+        - name: PYTHON
+          value: "3.7"
+        - name: REQUIREMENTS_FILE
+          value: requirements-dev.txt
+  finally:
+    - name: delete-test-dependencies
+      taskRef:
+        name: kubernetes-actions
+        kind: Task
+      params:
+        - name: script
+          value: |
+            kubectl delete pods -l test-dependencies=$(context.pipelineRun.uid) --timeout=30s
+            kubectl delete services -l test-dependencies=$(context.pipelineRun.uid) --timeout=30s

@@ -1,0 +1,163 @@
+<!doctype html><html lang=en-us><head><title>Extending Our Tekton Pipeline // Bittrance blog</title><link rel="shortcut icon" href=/favicon.ico><meta charset=utf-8><meta name=generator content="Hugo 0.83.1"><meta name=viewport content="width=device-width,initial-scale=1"><meta name=author content="Bittrance"><meta name=description content><link rel=stylesheet href=https://bittrance.github.io/css/main.min.afd5733f6d39365ab553b096081d5963acb9415e188f217556309f7070ab52cd.css><meta name=twitter:card content="summary"><meta name=twitter:title content="Extending Our Tekton Pipeline"><meta name=twitter:description content="This blog post continues my exploration of Tekton. In the first article we created a simple pipeline that ran our frontend tests. It will show how to set up pods to support tests. This also serves as a sketch of how to interact with Kubernetes in general.
+Running backend unit tests The Striv backend tests are mostly straight-forward unit tests, but includes some tests that test the interaction with supported databases, namely MySQL and Postgres."><meta property="og:title" content="Extending Our Tekton Pipeline"><meta property="og:description" content="This blog post continues my exploration of Tekton. In the first article we created a simple pipeline that ran our frontend tests. It will show how to set up pods to support tests. This also serves as a sketch of how to interact with Kubernetes in general.
+Running backend unit tests The Striv backend tests are mostly straight-forward unit tests, but includes some tests that test the interaction with supported databases, namely MySQL and Postgres."><meta property="og:type" content="article"><meta property="og:url" content="https://bittrance.github.io/posts/extending-our-tekton-pipeline/"><meta property="article:section" content="posts"><meta property="article:published_time" content="2021-05-04T14:31:00+02:00"><meta property="article:modified_time" content="2021-05-04T14:31:00+02:00"></head><body><header class=app-header><a href=https://bittrance.github.io/><img class=app-header-avatar src=/bittrance.jpeg alt=Bittrance></a><h1>Bittrance blog</h1><p>DevOps blog with focus on distributed systems and resiliency engineering.</p><div class=app-header-social><a href=https://github.com/bittrance target=_blank rel="noreferrer noopener"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-github"><title>My Github</title><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37.0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44.0 0020 4.77 5.07 5.07.0 0019.91 1S18.73.65 16 2.48a13.38 13.38.0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07.0 005 4.77 5.44 5.44.0 003.5 8.55c0 5.42 3.3 6.61 6.44 7A3.37 3.37.0 009 18.13V22"/></svg></a></div></header><main class=app-container><article class=post><header class=post-header><h1 class=post-title>Extending Our Tekton Pipeline</h1><div class=post-meta><div><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-calendar"><title>calendar</title><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>May 4, 2021</div><div><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-clock"><title>clock</title><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>6 min read</div></div></header><div class=post-content><p>This blog post continues my exploration of <a href=https://tekton.dev>Tekton</a>. In the <a href=/posts/extending-our-tekton-pipeline/>first article</a> we created a simple pipeline that ran our frontend tests. It will show how to set up pods to support tests. This also serves as a sketch of how to interact with Kubernetes in general.</p><h2 id=running-backend-unit-tests>Running backend unit tests</h2><p>The Striv backend tests are mostly straight-forward unit tests, but includes some tests that test the interaction with supported databases, namely MySQL and Postgres. It does not, however provide <a href=https://docs.pytest.org/en/stable/mark.html>pytest &ldquo;marks&rdquo;</a> to select only the unit test. Instead, there is a JSON config file called <code>testing-databases.conf</code> which controls what databases are tested. There is a standard task that allows us to write an arbitrary file to disk:</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>kubectl apply -f https://raw.githubusercontent.com/tektoncd/catalog/main/task/write-file/0.1/write-file.yaml
+</code></pre></div><p>Writing a simple &ldquo;unit test only&rdquo; <code>testing-databases.conf</code> looks like this:</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-yaml data-lang=yaml>    - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>write-testing-databases-conf</span>
+      <span style=color:#f92672>runAfter</span>: [<span style=color:#ae81ff>checkout]</span>
+      <span style=color:#f92672>taskRef</span>:
+        <span style=color:#f92672>name</span>: <span style=color:#ae81ff>write-file</span>
+        <span style=color:#f92672>kind</span>: <span style=color:#ae81ff>Task</span>
+      <span style=color:#f92672>workspaces</span>:
+        - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>output</span>
+          <span style=color:#f92672>workspace</span>: <span style=color:#ae81ff>striv-workspace</span>
+      <span style=color:#f92672>params</span>:
+        - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>path</span>
+          <span style=color:#f92672>value</span>: <span style=color:#ae81ff>testing-databases.json</span>
+        - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>contents</span>
+          <span style=color:#f92672>value</span>: <span style=color:#e6db74>&#39;[[&#34;sqlite&#34;, {&#34;database&#34;: &#34;:memory:&#34;}]]&#39;</span>
+</code></pre></div><p>We can now use the standard <a href=https://hub.tekton.dev/tekton/task/pytest>pytest task</a> to run our tests.</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>kubectl apply -f https://raw.githubusercontent.com/tektoncd/catalog/main/task/pytest/0.1/pytest.yaml
+</code></pre></div><p>The actual pytest task is quite straight-forward:</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-yaml data-lang=yaml>    - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>test-backend</span>
+      <span style=color:#f92672>runAfter</span>: [<span style=color:#ae81ff>write-testing-databases-conf]</span>
+      <span style=color:#f92672>taskRef</span>:
+        <span style=color:#f92672>name</span>: <span style=color:#ae81ff>pytest</span>
+        <span style=color:#f92672>kind</span>: <span style=color:#ae81ff>Task</span>
+      <span style=color:#f92672>workspaces</span>:
+        - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>source</span>
+          <span style=color:#f92672>workspace</span>: <span style=color:#ae81ff>striv-workspace</span>
+      <span style=color:#f92672>params</span>:
+        - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>PYTHON</span>
+          <span style=color:#f92672>value</span>: <span style=color:#e6db74>&#34;3.7&#34;</span>
+        - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>REQUIREMENTS_FILE</span>
+          <span style=color:#f92672>value</span>: <span style=color:#ae81ff>requirements-dev.txt</span>
+</code></pre></div><h2 id=integration-tests>Integration tests</h2><p>However, we do want to run those MySQL and Postgres tests! So how are we going to get a Postgres <strong>and</strong> a MySQL up? There are at least two different strategies to provide supporting resources to your tests:</p><ol><li>Use sidecars. Tekton has explicit support for running sidecars to Tasks.</li><li>Deploy Kubernetes resources (i.e. pods) to support our integration tests.</li></ol><p>Sidecars sound tempting, but has two problems. First, they can only be used by task definitions and not from a pipeline. That would mean that we could not use the standard pytest task above, but would have to define our own task that includes the sidecars. Second, we are likely to run into readiness issues and would have to include an explicit script step to wait for the database sockets to become available. These issues are surmountable and had I been at work, I would probably have taken this route.</p><p>But this is a blog post, and we are here to learn Tekton. Deploying a set of Kubernetes resources to provide those databases is a much more generally applicable technique, so let&rsquo;s see what it takes to do that!</p><h3 id=deploying-the-resources>Deploying the resources</h3><p>We can use <a href=https://hub.tekton.dev/tekton/task/kubernetes-actions>kubernetes-actions</a> to deploy resources to a Kubernetes cluster.</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>kubectl apply -f https://raw.githubusercontent.com/tektoncd/catalog/main/task/kubernetes-actions/0.2/kubernetes-actions.yaml
+</code></pre></div><p>Once we have credentials available, we can load the task to set up a service and pod with mysql. For the sake of simplicity, I&rsquo;m inlining the manifest in the task. I could equally set it up as a ConfigMap or mount the <code>striv-workspace</code> and reference a file there.</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-yaml data-lang=yaml>    - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>deploy-test-dependencies</span>
+      <span style=color:#f92672>taskRef</span>:
+        <span style=color:#f92672>name</span>: <span style=color:#ae81ff>kubernetes-actions</span>
+        <span style=color:#f92672>kind</span>: <span style=color:#ae81ff>Task</span>
+      <span style=color:#f92672>params</span>:
+        - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>script</span>
+          <span style=color:#f92672>value</span>: |<span style=color:#e6db74>
+</span><span style=color:#e6db74>            kubectl apply -f - &lt;&lt;EOF
+</span><span style=color:#e6db74>            apiVersion: v1
+</span><span style=color:#e6db74>            kind: Service
+</span><span style=color:#e6db74>            metadata:
+</span><span style=color:#e6db74>              # Unique name so it won&#39;t collide with concurrent runs
+</span><span style=color:#e6db74>              name: mysql-$(context.pipelineRun.uid)
+</span><span style=color:#e6db74>              labels:
+</span><span style=color:#e6db74>                # So we can delete both this and Postgres
+</span><span style=color:#e6db74>                test-dependencies: $(context.pipelineRun.uid)
+</span><span style=color:#e6db74>            spec:
+</span><span style=color:#e6db74>              ports:
+</span><span style=color:#e6db74>                - name: mysql
+</span><span style=color:#e6db74>                  port: 3306
+</span><span style=color:#e6db74>                  targetPort: mysql
+</span><span style=color:#e6db74>              selector:
+</span><span style=color:#e6db74>                mysql: $(context.pipelineRun.uid)
+</span><span style=color:#e6db74>            ---
+</span><span style=color:#e6db74>            apiVersion: v1
+</span><span style=color:#e6db74>            kind: Pod
+</span><span style=color:#e6db74>            metadata:
+</span><span style=color:#e6db74>              name: mysql-$(context.pipelineRun.uid)
+</span><span style=color:#e6db74>              labels:
+</span><span style=color:#e6db74>                # So we can delete both this and Postgres
+</span><span style=color:#e6db74>                test-dependencies: $(context.pipelineRun.uid)
+</span><span style=color:#e6db74>                # So the mysql service can find only this pod (and not Postgres)
+</span><span style=color:#e6db74>                mysql: $(context.pipelineRun.uid)
+</span><span style=color:#e6db74>            spec:
+</span><span style=color:#e6db74>              containers:
+</span><span style=color:#e6db74>                - name: mysql
+</span><span style=color:#e6db74>                  image: mysql:5.6
+</span><span style=color:#e6db74>                  ports:
+</span><span style=color:#e6db74>                    - name: mysql
+</span><span style=color:#e6db74>                      containerPort: 3306
+</span><span style=color:#e6db74>                  env:
+</span><span style=color:#e6db74>                    - name: MYSQL_ROOT_PASSWORD
+</span><span style=color:#e6db74>                      value: Cmdu1OG2vLfL
+</span><span style=color:#e6db74>                    - name: MYSQL_DATABASE
+</span><span style=color:#e6db74>                      value: striv_test
+</span><span style=color:#e6db74>            EOF
+</span><span style=color:#e6db74>            kubectl wait pods -l mysql=$(context.pipelineRun.uid) --timeout=30s --for condition=ready</span>            
+</code></pre></div><p>Note that this task has no <code>runAfter</code> key. Test resource creation will begin immediately when the pipeline is run, which means that it is very likely that they will be ready by the time we run the backend tests. Likely enough that we can ignore the issue of checking for readiness. One reason for not solving this issue is that the standard MySQL container restarts mysql once as part of its setup. This means that even succesfully connecting to port 3306 will not guarantee that MySQL is ready to serve our requests.</p><p>A very similar entry will be needed for Postrgres 11, but that is left as an exercise to the reader.</p><p>The configuration file injected by <code>write-testing-databases-conf</code> will need updating to include MySQL:</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-yaml data-lang=yaml>    - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>write-testing-databases-conf</span>
+      <span style=color:#f92672>runAfter</span>: [<span style=color:#ae81ff>checkout]</span>
+      <span style=color:#f92672>taskRef</span>:
+        <span style=color:#f92672>name</span>: <span style=color:#ae81ff>write-file</span>
+        <span style=color:#f92672>kind</span>: <span style=color:#ae81ff>Task</span>
+      <span style=color:#f92672>workspaces</span>:
+        - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>output</span>
+          <span style=color:#f92672>workspace</span>: <span style=color:#ae81ff>striv-workspace</span>
+      <span style=color:#f92672>params</span>:
+        - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>path</span>
+          <span style=color:#f92672>value</span>: <span style=color:#ae81ff>testing-databases.json</span>
+        - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>contents</span>
+          <span style=color:#f92672>value</span>: |<span style=color:#e6db74>
+</span><span style=color:#e6db74>            [
+</span><span style=color:#e6db74>              [&#34;sqlite&#34;, {&#34;database&#34;: &#34;:memory:&#34;}],
+</span><span style=color:#e6db74>              [
+</span><span style=color:#e6db74>                &#34;mysql&#34;,
+</span><span style=color:#e6db74>                {
+</span><span style=color:#e6db74>                  &#34;user&#34;: &#34;root&#34;,
+</span><span style=color:#e6db74>                  &#34;password&#34;: &#34;Cmdu1OG2vLfL&#34;,
+</span><span style=color:#e6db74>                  &#34;host&#34;: &#34;mysql-$(context.pipelineRun.uid)&#34;,
+</span><span style=color:#e6db74>                  &#34;database&#34;: &#34;striv_test&#34;,
+</span><span style=color:#e6db74>                  &#34;create_database&#34;: true
+</span><span style=color:#e6db74>                }
+</span><span style=color:#e6db74>              ]
+</span><span style=color:#e6db74>            ]</span>            
+</code></pre></div><h3 id=tearing-down-the-testing-resources>Tearing down the testing resources</h3><p>Once the pipeline is finished, we want to drop the database pods again. We could just add a normal task with <code>runAfter: ["test-backend"]</code>, but that might trip us up in the future when we add more tasks to our pipeline. Better to drop them as the very last activity. Tekton provides a <code>finally</code> section for this scenario where you can add tasks that should be run at the end of the pipeline, regardless of success.</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-yaml data-lang=yaml>  <span style=color:#f92672>finally</span>:
+    - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>delete-test-dependencies</span>
+      <span style=color:#f92672>taskRef</span>:
+        <span style=color:#f92672>name</span>: <span style=color:#ae81ff>kubernetes-actions</span>
+        <span style=color:#f92672>kind</span>: <span style=color:#ae81ff>Task</span>
+      <span style=color:#f92672>params</span>:
+        - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>script</span>
+          <span style=color:#f92672>value</span>: |<span style=color:#e6db74>
+</span><span style=color:#e6db74>            kubectl delete pods -l test-dependencies=$(context.pipelineRun.uid) --timeout=30s
+</span><span style=color:#e6db74>            kubectl delete services -l test-dependencies=$(context.pipelineRun.uid) --timeout=30s</span>            
+</code></pre></div><h2 id=running-the-pipeline>Running the pipeline</h2><p>If we were to run the pipeline now, the <code>deploy-test-dependencies</code> task would fail with a &ldquo;Forbidden&rdquo; error message, because the task does not have permission to interact with our Kubernetes cluster. Tekton pipelines normally use the &ldquo;default&rdquo; service account, which has very few permissions. We can assign a different account, either to the whole pipeline, or to an individual task. This pipeline draws code from several different sources (e.g. Docker Hub, GitHub, PyPI and npmjs.org) so there is plenty opportunity to sneak in malevolent code. It therefore makes sense to grant permissions only to the necessary tasks.</p><p>First, we need to create this service account and give it some permissions. For the sake of completeness, we create a role for it as well; in a production scenario, you probably have a reasonalbe group or role available already.</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-yaml data-lang=yaml><span style=color:#f92672>apiVersion</span>: <span style=color:#ae81ff>v1</span>
+<span style=color:#f92672>kind</span>: <span style=color:#ae81ff>ServiceAccount</span>
+<span style=color:#f92672>metadata</span>:
+  <span style=color:#f92672>name</span>: <span style=color:#ae81ff>test-dependencies-deployer</span>
+---
+<span style=color:#f92672>apiVersion</span>: <span style=color:#ae81ff>rbac.authorization.k8s.io/v1</span>
+<span style=color:#f92672>kind</span>: <span style=color:#ae81ff>Role</span>
+<span style=color:#f92672>metadata</span>:
+  <span style=color:#f92672>name</span>: <span style=color:#ae81ff>test-dependencies-deployer</span>
+<span style=color:#f92672>rules</span>:
+  - <span style=color:#f92672>apiGroups</span>: [<span style=color:#e6db74>&#34;&#34;</span>]
+    <span style=color:#f92672>resources</span>: [<span style=color:#ae81ff>pods, services]</span>
+    <span style=color:#f92672>verbs</span>: [<span style=color:#ae81ff>create, delete, get, list, watch]</span>
+---
+<span style=color:#f92672>apiVersion</span>: <span style=color:#ae81ff>rbac.authorization.k8s.io/v1beta1</span>
+<span style=color:#f92672>kind</span>: <span style=color:#ae81ff>RoleBinding</span>
+<span style=color:#f92672>metadata</span>:
+  <span style=color:#f92672>name</span>: <span style=color:#ae81ff>test-dependencies-deployer</span>
+<span style=color:#f92672>subjects</span>:
+  - <span style=color:#f92672>kind</span>: <span style=color:#ae81ff>ServiceAccount</span>
+    <span style=color:#f92672>name</span>: <span style=color:#ae81ff>test-dependencies-deployer</span>
+<span style=color:#f92672>roleRef</span>:
+  <span style=color:#f92672>kind</span>: <span style=color:#ae81ff>Role</span>
+  <span style=color:#f92672>name</span>: <span style=color:#ae81ff>test-dependencies-deployer</span>
+  <span style=color:#f92672>apiGroup</span>: <span style=color:#ae81ff>rbac.authorization.k8s.io</span>
+</code></pre></div><p>Finally, we need to tell Tekton that the two test dependency tasks should use this service account. This is part of the PipelineRun resource and looks like this:</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-yaml data-lang=yaml><span style=color:#f92672>apiVersion</span>: <span style=color:#ae81ff>tekton.dev/v1beta1</span>
+<span style=color:#f92672>kind</span>: <span style=color:#ae81ff>PipelineRun</span>
+<span style=color:#f92672>metadata</span>:
+  <span style=color:#f92672>name</span>: <span style=color:#ae81ff>deploy-striv-run-2</span>
+<span style=color:#f92672>spec</span>:
+  <span style=color:#f92672>pipelineRef</span>:
+    <span style=color:#f92672>name</span>: <span style=color:#ae81ff>deploy-striv</span> <span style=color:#75715e># We want to run this pipeline</span>
+  <span style=color:#f92672>serviceAccountNames</span>:
+    <span style=color:#75715e># Tasks to set up and tear down test dependencies need to use a service account</span>
+    - <span style=color:#f92672>taskName</span>: <span style=color:#ae81ff>deploy-test-dependencies</span>
+      <span style=color:#f92672>serviceAccountName</span>: <span style=color:#ae81ff>test-dependencies-deployer</span>
+    - <span style=color:#f92672>taskName</span>: <span style=color:#ae81ff>delete-test-dependencies</span>
+      <span style=color:#f92672>serviceAccountName</span>: <span style=color:#ae81ff>test-dependencies-deployer</span>
+  <span style=color:#f92672>workspaces</span>:
+    - <span style=color:#75715e># This describes how to provide the workspace that the pipeline requires</span>
+      <span style=color:#f92672>name</span>: <span style=color:#ae81ff>striv-workspace</span>
+      <span style=color:#f92672>volumeClaimTemplate</span>:
+        <span style=color:#f92672>spec</span>:
+          <span style=color:#f92672>accessModes</span>:
+            - <span style=color:#ae81ff>ReadWriteOnce</span>
+          <span style=color:#f92672>resources</span>:
+            <span style=color:#f92672>requests</span>:
+              <span style=color:#f92672>storage</span>: <span style=color:#ae81ff>1Gi</span>
+</code></pre></div><p>The <a href=/extending-our-tekton-pipeline/deploy-striv-extended.yaml>updated pipeline</a> is here if you want to test it yourself.</p><p>At last, we can apply this pipeline run and get a successful test run:</p><p><img src=/extending-our-tekton-pipeline/deploy-striv-run-2.png alt="deploy-striv run successful" title="deploy-striv run successful"></p><h2 id=next-step>Next step</h2><p>We now have a complete testing pipeline. To make this a complete continuous delivery pipeline, it needs to build and deploy the Docker container that is the main artifact. However, that should happen only from some branches, so first we need to set up a trigger so that GitHub informs us when and what changes are pushed to the striv repository. More on this in the next blog post.</p></div><div class=post-footer></div></article></main></body></html>
