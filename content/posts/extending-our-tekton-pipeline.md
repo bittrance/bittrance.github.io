@@ -1,12 +1,24 @@
 ---
 title: "Extending Our Tekton Pipeline"
 date: 2021-05-04T14:31:00+02:00
+summary: |
+  This blog post continues my exploration of Tekton. In the first blog post we created a simple pipeline that ran our frontend tests. In this blog post we will show how to set up pods to support our tests. This also serves as a sketch of how to interact with Kubernetes in general.
 ---
-This blog post continues my exploration of [Tekton](https://tekton.dev). In the [first article](/posts/extending-our-tekton-pipeline/) we created a simple pipeline that ran our frontend tests. It will show how to set up pods to support tests. This also serves as a sketch of how to interact with Kubernetes in general.
+This blog post continues my exploration of [Tekton](https://tekton.dev). In the [first blog post](/posts/extending-our-tekton-pipeline/) we created a simple pipeline that ran our frontend tests. In this blog post I will show how to set up pods to support our tests. This also serves as a sketch of how to interact with Kubernetes in general.
+
+## Recap
+
+We need a non-trivial project so that we can explore difficulties that tend to arise when writing build pipelines. These blog posts will try to recreate the [striv master pipeline](https://github.com/bittrance/striv/blob/cfac501a45db4c58ae526a3e58242c6245305624/.github/workflows/default-test.yml). Striv is a typical webapp with a Vue-based frontend and a Python-based backend which keeps its state in MySQL or Postgres - in other words a bog-standard single-page application (SPA). Its main Github action contains the following steps:
+
+1. Run node unit tests for the frontend (`npm run test:unit`)
+1. Run python unit and integration tests for the backend (`pytest`)
+1. Build and push a Docker image (`docker build` and `docker push`)
+
+We already did step 1, and now it is time for step 2.
 
 ## Running backend unit tests
 
-The Striv backend tests are mostly straight-forward unit tests, but includes some tests that test the interaction with supported databases, namely MySQL and Postgres. It does not, however provide [pytest "marks"](https://docs.pytest.org/en/stable/mark.html) to select only the unit test. Instead, there is a JSON config file called `testing-databases.conf` which controls what databases are tested. There is a standard task that allows us to write an arbitrary file to disk:
+The Striv backend tests are mostly straight-forward unit tests, but includes some tests that test the interaction with supported databases, namely MySQL and Postgres. It does not, however provide [pytest "marks"](https://docs.pytest.org/en/stable/mark.html) to select only the unit test. Instead, there is a JSON config file called `testing-databases.conf` which controls what databases are tested. Tekton has a standard task [write-file](https://hub.tekton.dev/tekton/task/write-file) that allows us to write an arbitrary file to disk:
 
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/tektoncd/catalog/main/task/write-file/0.1/write-file.yaml
@@ -53,23 +65,23 @@ The actual pytest task is quite straight-forward:
 
 ## Integration tests
 
-However, we do want to run those MySQL and Postgres tests! So how are we going to get a Postgres **and** a MySQL up? There are at least two different strategies to provide supporting resources to your tests:
+However, we do want to run those MySQL and Postgres tests! So how are we going to get databases up? There are at least two different strategies to provide supporting resources to your tests:
 
 1. Use sidecars. Tekton has explicit support for running sidecars to Tasks. 
 1. Deploy Kubernetes resources (i.e. pods) to support our integration tests.
 
-Sidecars sound tempting, but has two problems. First, they can only be used by task definitions and not from a pipeline. That would mean that we could not use the standard pytest task above, but would have to define our own task that includes the sidecars. Second, we are likely to run into readiness issues and would have to include an explicit script step to wait for the database sockets to become available. These issues are surmountable and had I been at work, I would probably have taken this route.
+Sidecars sound tempting, but has two problems. First, they can only be used by task definitions and not from a pipeline. That would mean that we could not use the standard pytest task above, but would have to copy it and define our own task that includes the sidecars. Second, we are likely to run into readiness issues and would have to include an explicit script step to wait for the database sockets to become available. These issues are surmountable and had I been at work, I would probably have taken this route.
 
 But this is a blog post, and we are here to learn Tekton. Deploying a set of Kubernetes resources to provide those databases is a much more generally applicable technique, so let's see what it takes to do that!
 
-### Deploying the resources
+### Deploying Kubernetes resources
 
-We can use [kubernetes-actions](https://hub.tekton.dev/tekton/task/kubernetes-actions) to deploy resources to a Kubernetes cluster.
+We can use the standard [kubernetes-actions](https://hub.tekton.dev/tekton/task/kubernetes-actions) task to deploy resources to a Kubernetes cluster.
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/tektoncd/catalog/main/task/kubernetes-actions/0.2/kubernetes-actions.yaml
 ```
 
-Once we have credentials available, we can load the task to set up a service and pod with mysql. For the sake of simplicity, I'm inlining the manifest in the task. I could equally set it up as a ConfigMap or mount the `striv-workspace` and reference a file there.
+For the sake of simplicity, I'm inlining the manifest in the task. I could equally set it up as a ConfigMap or mount the `striv-workspace` and reference a file from the GitHub repository (though we would have had to resort to e.g. `sed` to inject parameters).
 ```yaml
     - name: deploy-test-dependencies
       taskRef:
@@ -113,14 +125,14 @@ Once we have credentials available, we can load the task to set up a service and
                       containerPort: 3306
                   env:
                     - name: MYSQL_ROOT_PASSWORD
-                      value: Cmdu1OG2vLfL
+                      value: $(context.pipelineRun.uid)
                     - name: MYSQL_DATABASE
                       value: striv_test
             EOF
             kubectl wait pods -l mysql=$(context.pipelineRun.uid) --timeout=30s --for condition=ready
 ```
 
-Note that this task has no `runAfter` key. Test resource creation will begin immediately when the pipeline is run, which means that it is very likely that they will be ready by the time we run the backend tests. Likely enough that we can ignore the issue of checking for readiness. One reason for not solving this issue is that the standard MySQL container restarts mysql once as part of its setup. This means that even succesfully connecting to port 3306 will not guarantee that MySQL is ready to serve our requests.
+Note that this task has no `runAfter` key. Test resource creation will begin immediately when the pipeline is run, which means that it is very likely that they will be ready by the time we run the backend tests (checking out the GitHub repository and then installing the Pip dependencies takes well over a minute). Likely enough that we can ignore the issue of checking for readiness. One reason for not addressing this issue is that the standard MySQL container restarts mysql once as part of its setup. This means that this check gets quite complicated since even succesfully connecting to port 3306 will not guarantee that MySQL is ready to serve our requests.
 
 A very similar entry will be needed for Postrgres 11, but that is left as an exercise to the reader.
 
@@ -145,7 +157,7 @@ The configuration file injected by `write-testing-databases-conf` will need upda
                 "mysql",
                 {
                   "user": "root",
-                  "password": "Cmdu1OG2vLfL",
+                  "password": "$(context.pipelineRun.uid)",
                   "host": "mysql-$(context.pipelineRun.uid)",
                   "database": "striv_test",
                   "create_database": true
@@ -156,7 +168,7 @@ The configuration file injected by `write-testing-databases-conf` will need upda
 
 ### Tearing down the testing resources
 
-Once the pipeline is finished, we want to drop the database pods again. We could just add a normal task with `runAfter: ["test-backend"]`, but that might trip us up in the future when we add more tasks to our pipeline. Better to drop them as the very last activity. Tekton provides a `finally` section for this scenario where you can add tasks that should be run at the end of the pipeline, regardless of success.
+Once the test run is finished, we want to drop the database pods again. We could just add a normal task with `runAfter: ["test-backend"]`, but that might trip us up in the future when we add more tasks to our pipeline. Better to drop them as the very last activity (plus we get to explore another Tekton feature). Tekton provides a [finally](https://tekton.dev/docs/pipelines/pipelines/#adding-finally-to-the-pipeline) section for this scenario where you can add tasks that should be run at the end of the pipeline, regardless of success.
 ```yaml
   finally:
     - name: delete-test-dependencies
@@ -172,9 +184,9 @@ Once the pipeline is finished, we want to drop the database pods again. We could
 
 ## Running the pipeline
 
-If we were to run the pipeline now, the `deploy-test-dependencies` task would fail with a "Forbidden" error message, because the task does not have permission to interact with our Kubernetes cluster. Tekton pipelines normally use the "default" service account, which has very few permissions. We can assign a different account, either to the whole pipeline, or to an individual task. This pipeline draws code from several different sources (e.g. Docker Hub, GitHub, PyPI and npmjs.org) so there is plenty opportunity to sneak in malevolent code. It therefore makes sense to grant permissions only to the necessary tasks.
+If we were to run the pipeline now, the `deploy-test-dependencies` task would fail with a "Forbidden" error message, because it does not have permission to interact with our Kubernetes cluster. Tekton pipelines normally use the "default" service account, which has very few permissions. We can assign a different account, either to the whole pipeline, or to an individual task. This pipeline draws code from several different sources (e.g. Docker Hub, GitHub, PyPI and npmjs.org) so there is plenty opportunity to sneak in malevolent code. It therefore makes sense to grant permissions only to the necessary tasks.
 
-First, we need to create this service account and give it some permissions. For the sake of completeness, we create a role for it as well; in a production scenario, you probably have a reasonalbe group or role available already.
+First, we need to create this service account and give it some permissions. For the sake of completeness, we create a role for it as well; in a production scenario, you would probably have a reasonalbe group or role available already.
 ```yaml
 apiVersion: v1
 kind: ServiceAccount
@@ -231,6 +243,11 @@ spec:
 ```
 
 The [updated pipeline](/extending-our-tekton-pipeline/deploy-striv-extended.yaml) is here if you want to test it yourself.
+
+```bash
+kubectl apply -f https://bittrance.github.io/extending-our-tekton-pipeline/deploy-striv-extended.yaml
+kubectl apply -f https://bittrance.github.io/extending-our-tekton-pipeline/deploy-striv-run-2.yaml
+```
 
 At last, we can apply this pipeline run and get a successful test run:
 
