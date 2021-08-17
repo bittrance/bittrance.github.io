@@ -61,6 +61,8 @@ kubectl apply -f https://github.com/datawire/ambassador-operator/releases/latest
 kubectl apply -n ambassador -f https://github.com/datawire/ambassador-operator/releases/latest/download/ambassador-operator-kind.yaml
 ```
 
+## Metrics server
+
 Kind does not come with a metrics-server, but since it is included in e.g. AKS, some manifests assume it is installed. Let's install metrics-server manually.
 ```bash
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.4.2/components.yaml
@@ -71,3 +73,11 @@ As noted in [Resource Metrics API (metrics-server) #398](https://github.com/kube
 kubectl patch deployment metrics-server -n kube-system -p '{"spec":{"template":{"spec":{"containers":[{"name":"metrics-server","args":["--cert-dir=/tmp", "--secure-port=4443", "--kubelet-insecure-tls","--kubelet-preferred-address-types=InternalIP"]}]}}}}'
 ```
 
+## Running a local registry
+
+In order to test your service in Kubernetes, you need to deploy images before they are pushed to your container registry for deployment. This requires running a local registry that is available to your Kubernetes. Starting a registry is simple:
+
+```bash
+docker run -d -p 127.0.0.1:5000:5000 --name kind-registry registry
+docker network connect kind kind-registry
+```
