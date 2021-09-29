@@ -1,15 +1,74 @@
-<!doctype html><html lang=en-us><head><title>Truncating a Kafka topic // Bittrance blog</title><link rel="shortcut icon" href=/favicon.ico><meta charset=utf-8><meta name=generator content="Hugo 0.83.1"><meta name=viewport content="width=device-width,initial-scale=1"><meta name=author content="Bittrance"><meta name=description content><link rel=stylesheet href=https://bittrance.github.io/css/main.min.afd5733f6d39365ab553b096081d5963acb9415e188f217556309f7070ab52cd.css><meta name=twitter:card content="summary"><meta name=twitter:title content="Truncating a Kafka topic"><meta name=twitter:description content="Sometimes, you want to get rid of messages from a Kafka topic. Perhaps you have consumers that always start from the beginning, or you realize the whole topic is full of messages with sensitive data that must not reach consumers.
-In theory, you can easily delete a Kafka topic. However, this is quite disruptive and is likely to fail both producers and consumers on this topic even if you quickly recreate the topic."><meta property="og:title" content="Truncating a Kafka topic"><meta property="og:description" content="Sometimes, you want to get rid of messages from a Kafka topic. Perhaps you have consumers that always start from the beginning, or you realize the whole topic is full of messages with sensitive data that must not reach consumers.
-In theory, you can easily delete a Kafka topic. However, this is quite disruptive and is likely to fail both producers and consumers on this topic even if you quickly recreate the topic."><meta property="og:type" content="article"><meta property="og:url" content="https://bittrance.github.io/posts/kafka-purge-topic/"><meta property="article:section" content="posts"><meta property="article:published_time" content="2021-04-02T20:43:28+02:00"><meta property="article:modified_time" content="2021-04-02T20:43:28+02:00"></head><body><header class=app-header><a href=https://bittrance.github.io/><img class=app-header-avatar src=/bittrance.jpeg alt=Bittrance></a><h1>Bittrance blog</h1><p>DevOps blog with focus on distributed systems and resiliency engineering.</p><div class=app-header-social><a href=https://github.com/bittrance target=_blank rel="noreferrer noopener"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-github"><title>My Github</title><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37.0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44.0 0020 4.77 5.07 5.07.0 0019.91 1S18.73.65 16 2.48a13.38 13.38.0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07.0 005 4.77 5.44 5.44.0 003.5 8.55c0 5.42 3.3 6.61 6.44 7A3.37 3.37.0 009 18.13V22"/></svg></a></div></header><main class=app-container><article class=post><header class=post-header><h1 class=post-title>Truncating a Kafka topic</h1><div class=post-meta><div><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-calendar"><title>calendar</title><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Apr 2, 2021</div><div><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-clock"><title>clock</title><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>3 min read</div></div></header><div class=post-content><p>Sometimes, you want to get rid of messages from a Kafka topic. Perhaps you have consumers that always start from the beginning, or you realize the whole topic is full of messages with sensitive data that must not reach consumers.</p><p>In theory, you can easily delete a Kafka topic. However, this is quite disruptive and is likely to fail both producers and consumers on this topic even if you quickly recreate the topic. There is no telling what consumer groups tracking their own offsets or having custom rebalancing logic might do.</p><p>Instead, the best way to truncate a Kafka topic is to temporarily set that topic&rsquo;s retention time (<code>rentention.ms</code> config variable) to a low value and let Kafka purge all messages in the topic. This will not affect a running consumer group, so long as the retention time is higher than its time lag plus its processing time. Newly arriving consumer groups will see only messages that arrive after the truncate.</p><p>Messages are deleted from the topic by the <strong>log cleaner</strong>. It wakes up every <code>log.retention.check.interval.ms</code> (which defaults to 5 minutes) and looks through the topics to see what needs to be cleaned up. This operation is performed independently by each cluster member, each of which maintains its own log cleaner, so messages will disappear from some partitions earlier than others.</p><p>The retention time can be changed runtime (as of Kafka 2.4, <code>kafka-config.sh</code> is one of those commands that still require Zookeeper access):</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>$ kafka-configs.sh --zookeeper zookeeper:2181 --alter <span style=color:#ae81ff>\
+<!doctype html><html lang=en-us>
+<head>
+<title>Truncating a Kafka topic // Bittrance blog</title>
+<link rel="shortcut icon" href=/favicon.ico>
+<meta charset=utf-8>
+<meta name=generator content="Hugo 0.88.1">
+<meta name=viewport content="width=device-width,initial-scale=1">
+<meta name=author content="Bittrance">
+<meta name=description content>
+<link rel=stylesheet href=https://bittrance.github.io/css/main.min.afd5733f6d39365ab553b096081d5963acb9415e188f217556309f7070ab52cd.css>
+<meta name=twitter:card content="summary">
+<meta name=twitter:title content="Truncating a Kafka topic">
+<meta name=twitter:description content="Sometimes, you want to get rid of messages from a Kafka topic. Perhaps you have consumers that always start from the beginning, or you realize the whole topic is full of messages with sensitive data that must not reach consumers.
+In theory, you can easily delete a Kafka topic. However, this is quite disruptive and is likely to fail both producers and consumers on this topic even if you quickly recreate the topic.">
+<meta property="og:title" content="Truncating a Kafka topic">
+<meta property="og:description" content="Sometimes, you want to get rid of messages from a Kafka topic. Perhaps you have consumers that always start from the beginning, or you realize the whole topic is full of messages with sensitive data that must not reach consumers.
+In theory, you can easily delete a Kafka topic. However, this is quite disruptive and is likely to fail both producers and consumers on this topic even if you quickly recreate the topic.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://bittrance.github.io/posts/kafka-purge-topic/"><meta property="article:section" content="posts">
+<meta property="article:published_time" content="2021-04-02T20:43:28+02:00">
+<meta property="article:modified_time" content="2021-04-02T20:43:28+02:00">
+</head>
+<body>
+<header class=app-header>
+<a href=https://bittrance.github.io/><img class=app-header-avatar src=/bittrance.jpeg alt=Bittrance></a>
+<h1>Bittrance blog</h1>
+<p>DevOps blog with focus on distributed systems and resiliency engineering.</p>
+<div class=app-header-social>
+<a href=https://github.com/bittrance target=_blank rel="noreferrer noopener"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-github"><title>My Github</title><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37.0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44.0 0020 4.77 5.07 5.07.0 0019.91 1S18.73.65 16 2.48a13.38 13.38.0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07.0 005 4.77 5.44 5.44.0 003.5 8.55c0 5.42 3.3 6.61 6.44 7A3.37 3.37.0 009 18.13V22"/></svg>
+</a>
+</div>
+</header>
+<main class=app-container>
+<article class=post>
+<header class=post-header>
+<h1 class=post-title>Truncating a Kafka topic</h1>
+<div class=post-meta>
+<div><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-calendar"><title>calendar</title><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+Apr 2, 2021
+</div>
+<div><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-clock"><title>clock</title><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+3 min read
+</div>
+</div>
+</header>
+<div class=post-content>
+<p>Sometimes, you want to get rid of messages from a Kafka topic. Perhaps you have consumers that always start from the beginning, or you realize the whole topic is full of messages with sensitive data that must not reach consumers.</p>
+<p>In theory, you can easily delete a Kafka topic. However, this is quite disruptive and is likely to fail both producers and consumers on this topic even if you quickly recreate the topic. There is no telling what consumer groups tracking their own offsets or having custom rebalancing logic might do.</p>
+<p>Instead, the best way to truncate a Kafka topic is to temporarily set that topic&rsquo;s retention time (<code>rentention.ms</code> config variable) to a low value and let Kafka purge all messages in the topic. This will not affect a running consumer group, so long as the retention time is higher than its time lag plus its processing time. Newly arriving consumer groups will see only messages that arrive after the truncate.</p>
+<p>Messages are deleted from the topic by the <strong>log cleaner</strong>. It wakes up every <code>log.retention.check.interval.ms</code> (which defaults to 5 minutes) and looks through the topics to see what needs to be cleaned up. This operation is performed independently by each cluster member, each of which maintains its own log cleaner, so messages will disappear from some partitions earlier than others.</p>
+<p>The retention time can be changed runtime (as of Kafka 2.4, <code>kafka-config.sh</code> is one of those commands that still require Zookeeper access):</p>
+<div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>$ kafka-configs.sh --zookeeper zookeeper:2181 --alter <span style=color:#ae81ff>\
 </span><span style=color:#ae81ff></span>    --entity-type topics <span style=color:#ae81ff>\
 </span><span style=color:#ae81ff></span>    --entity-name some-topic <span style=color:#ae81ff>\
 </span><span style=color:#ae81ff></span>    --add-config retention.ms<span style=color:#f92672>=</span><span style=color:#ae81ff>1000</span>
-</code></pre></div><p>Since the log cleaner runs periodically, you have to wait for a bit before data is actually deleted. When it runs, you will see the following in the log:</p><pre><code>[2021-03-31 19:43:15,739] INFO [Log partition=some-topic-0, dir=/kafka/kafka-logs-906aad843b03] Rolled new log segment at offset 216 in 3 ms. (kafka.log.Log)
+</code></pre></div><p>Since the log cleaner runs periodically, you have to wait for a bit before data is actually deleted. When it runs, you will see the following in the log:</p>
+<pre tabindex=0><code>[2021-03-31 19:43:15,739] INFO [Log partition=some-topic-0, dir=/kafka/kafka-logs-906aad843b03] Rolled new log segment at offset 216 in 3 ms. (kafka.log.Log)
 [2021-03-31 19:43:15,739] INFO [Log partition=some-topic-0, dir=/kafka/kafka-logs-906aad843b03] Scheduling log segment [baseOffset 200, size 1552] for deletion. (kafka.log.Log)
 [2021-03-31 19:43:15,740] INFO [Log partition=some-topic-0, dir=/kafka/kafka-logs-906aad843b03] Incrementing log start offset to 216 (kafka.log.Log)
 [2021-03-31 19:44:15,740] INFO [Log partition=testo-0, dir=/kafka/kafka-logs-906aad843b03] Deleting segment 200 (kafka.log.Log)
-</code></pre><p>So what value should you pick for <code>retention.ms</code>? You can of course set it to 1 ms, but keep in mind that a consumer typically has a window between poll operations in which it processes messages that it got from the latest poll. If the log cleaner deletes messages that arrived after consumer&rsquo;s latest poll, data loss may occur. In the best of worlds, you have metrics on your consumer processing time and can estimate a good temporary retention time.</p><p>Once all partitions have been truncated, you can remove (or reset) the topic retention time. Since there is a small risk of data loss during subsequent wakeups of the log cleaner, you should switch back as soon as possible after the log cleaner has run.</p><div class=highlight><pre style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-sh data-lang=sh>kafka-configs.sh --zookeeper zookeeper:2181 --alter <span style=color:#ae81ff>\
+</code></pre><p>So what value should you pick for <code>retention.ms</code>? You can of course set it to 1 ms, but keep in mind that a consumer typically has a window between poll operations in which it processes messages that it got from the latest poll. If the log cleaner deletes messages that arrived after consumer&rsquo;s latest poll, data loss may occur. In the best of worlds, you have metrics on your consumer processing time and can estimate a good temporary retention time.</p>
+<p>Once all partitions have been truncated, you can remove (or reset) the topic retention time. Since there is a small risk of data loss during subsequent wakeups of the log cleaner, you should switch back as soon as possible after the log cleaner has run.</p>
+<div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-sh data-lang=sh>kafka-configs.sh --zookeeper zookeeper:2181 --alter <span style=color:#ae81ff>\
 </span><span style=color:#ae81ff></span>    --entity-type topics <span style=color:#ae81ff>\
 </span><span style=color:#ae81ff></span>    --entity-name some-topic <span style=color:#ae81ff>\
 </span><span style=color:#ae81ff></span>    --delete-config retention.ms
-</code></pre></div></div><div class=post-footer></div></article></main></body></html>
+</code></pre></div>
+</div>
+<div class=post-footer>
+</div>
+</article>
+</main>
+</body>
+</html>
