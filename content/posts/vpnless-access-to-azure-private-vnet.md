@@ -1,8 +1,7 @@
 ---
 title: "VPN-less access to Azure Private vnet"
-date: 2021-09-21T13:49:00+02:00
-draft: true
-summary: TBD
+date: 2021-09-29T13:49:00+02:00
+summary: A simple method to get access to private networks on private clouds.
 ---
 
 Accessing cloud resources that are not exposed to the Internet is a constant headache. Neither Azure nor AWS have a VPN solution that can be attached to any private subnet and just works. Traditionally, you would spin up a VM with openssh and connect it to some public subnet as well as the relevant private subnet, punch a hole in the network policy and use SSH tunnelling. Forgotten "bastion" VMs will put you on the shortlist to "win" the next security audit. Is there no way avoid this embarrassment?
@@ -153,17 +152,19 @@ Hello World
 * Connection #0 to host localhost left intact
 ```
 
-## Finally
+## Teardown
 
 Don't forget to tear down your resources.
 ```bash
 az group delete --name rg-access-bridge
 ```
 
-## Limitations
+## Finally
 
 Please note that a Hybrid connection costs about USD 13/month and each listener costs another USD 10/month and that traffic above 5 GB is charged at a extortionate USD 1/GB. For most cases, these numbers are small, but if you are really shoestring, they may be a concern and you may want to create and tear down the setup between usage.
 
 Latency is not great with this setup. After all, there may be upwards of six different TCP sessions involved (client -> Docker proxy -> azbridge -L -> Azure Relay inbound -> Azure Relay outbound -> (Docker proxy -> ?) azbridge -R -> Service). Massive data transfers and highly interactive web apps are likely to suffer accordingly. Still, as a service hatch, it works quite well.
 
 With this setup, certificates will not be valid since the remote end will claim to be whatever service we are trying to connect to, but on the local machine, we will of course connect to localhost. Your driver/lib/browser will have to be persuaded not to verify the certificate.
+
+Also, while this procedure is most useful on Azure, there is nothing to stop you from using it with any other cloud provider or even on-premise access. Wherever you can run `azbridge -R`, this process should be usable.
