@@ -1,0 +1,45 @@
+apiVersion: litmuschaos.io/v1alpha1
+kind: ChaosEngine
+metadata:
+  name: olric-test
+  namespace: litmus
+spec:
+  appinfo:
+    appns: default
+    app_label: app=olricd
+    appkind: deployment
+  annotationCheck: 'false'
+  engineState: active
+  chaosServiceAccount: litmus-admin
+  jobCleanUpPolicy: retain
+  components:
+    runner:
+      imagePullPolicy: Always
+      experiments:
+        - name: pod-delete
+          spec:
+            probe:
+              - name: check-podtato-head-access-url
+                type: httpProbe
+                httpProbe/inputs:
+                  url: http://podtato.litmus.svc.cluster.local:9000
+                  insecureSkipVerify: false
+                  method:
+                    get:
+                      criteria: ==
+                      responseCode: '200'
+                mode: Continuous
+                runProperties:
+                  probeTimeout: 1
+                  interval: 1
+                  retry: 1
+            components:
+              env:
+                - name: TOTAL_CHAOS_DURATION
+                  value: '30'
+                # set chaos interval (in sec) as desired
+                - name: CHAOS_INTERVAL
+                  value: '10'
+                # pod failures without '--force' & default terminationGracePeriodSeconds
+                - name: FORCE
+                  value: 'false'
