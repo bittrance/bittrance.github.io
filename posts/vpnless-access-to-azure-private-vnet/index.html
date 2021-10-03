@@ -129,7 +129,7 @@ az relay hyco authorization-rule keys list <span style=color:#ae81ff>\
 </span><span style=color:#ae81ff></span>    --vnet VNET_ID <span style=color:#ae81ff>\
 </span><span style=color:#ae81ff></span>    --subnet snet-access-bridge
 </code></pre></div><h3 id=testing-the-relay>Testing the relay</h3>
-<p>We can now use Docker to establish a connection with the Hybrid connection and thence onto the target service. This example binds port 443 (https) on the local machine and forwards it to the echo server:</p>
+<p>We can now use Docker to establish a connection with the Hybrid connection and thence onto the target service. This example binds port 8080 on the local machine and forwards it to the echo server:</p>
 <div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>docker run -p 127.0.0.1:8080:8080 --rm -it bittrance/azbridge <span style=color:#ae81ff>\
 </span><span style=color:#ae81ff></span>    -L 0.0.0.0:8080:hyco-echo-server <span style=color:#ae81ff>\
 </span><span style=color:#ae81ff></span>    -x <span style=color:#e6db74>&#39;SAS_POLICY&#39;</span>
@@ -157,7 +157,7 @@ Hello World
 <p>Don&rsquo;t forget to tear down your resources.</p>
 <div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>az group delete --name rg-access-bridge
 </code></pre></div><h2 id=finally>Finally</h2>
-<p>Please note that a Hybrid connection costs about USD 13/month and each listener costs another USD 10/month and that traffic above 5 GB is charged at a extortionate USD 1/GB. For most cases, these numbers are small, but if you are really shoestring, they may be a concern and you may want to create and tear down the setup between usage.</p>
+<p>Please note that a Hybrid connection costs about USD 13/month and each listener costs another USD 10/month and that traffic above 5 GB is charged at a steep USD 1/GB. For most cases, these numbers are small, but if you are really shoestring, they may be a concern and you may want to create and tear down the setup between usage.</p>
 <p>Latency is not great with this setup. After all, there may be upwards of six different TCP sessions involved (client -> Docker proxy -> azbridge -L -> Azure Relay inbound -> Azure Relay outbound -> (Docker proxy -> ?) azbridge -R -> Service). Massive data transfers and highly interactive web apps are likely to suffer accordingly. Still, as a service hatch, it works quite well.</p>
 <p>With this setup, certificates will not be valid since the remote end will claim to be whatever service we are trying to connect to, but on the local machine, we will of course connect to localhost. Your driver/lib/browser will have to be persuaded not to verify the certificate.</p>
 <p>Also, while this procedure is most useful on Azure, there is nothing to stop you from using it with any other cloud provider or even on-premise access. Wherever you can run <code>azbridge -R</code>, this process should be usable.</p>
