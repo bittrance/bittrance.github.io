@@ -116,7 +116,7 @@ az container create \
 
 ### Testing the relay
 
-We can now use Docker to establish a connection with the Hybrid connection and thence onto the target service. This example binds port 443 (https) on the local machine and forwards it to the echo server:
+We can now use Docker to establish a connection with the Hybrid connection and thence onto the target service. This example binds port 8080 on the local machine and forwards it to the echo server:
 
 ```bash
 docker run -p 127.0.0.1:8080:8080 --rm -it bittrance/azbridge \
@@ -161,7 +161,7 @@ az group delete --name rg-access-bridge
 
 ## Finally
 
-Please note that a Hybrid connection costs about USD 13/month and each listener costs another USD 10/month and that traffic above 5 GB is charged at a extortionate USD 1/GB. For most cases, these numbers are small, but if you are really shoestring, they may be a concern and you may want to create and tear down the setup between usage.
+Please note that a Hybrid connection costs about USD 13/month and each listener costs another USD 10/month and that traffic above 5 GB is charged at a steep USD 1/GB. For most cases, these numbers are small, but if you are really shoestring, they may be a concern and you may want to create and tear down the setup between usage.
 
 Latency is not great with this setup. After all, there may be upwards of six different TCP sessions involved (client -> Docker proxy -> azbridge -L -> Azure Relay inbound -> Azure Relay outbound -> (Docker proxy -> ?) azbridge -R -> Service). Massive data transfers and highly interactive web apps are likely to suffer accordingly. Still, as a service hatch, it works quite well.
 
