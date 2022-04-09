@@ -1,190 +1,99 @@
-<!doctype html><html lang=en-us>
-<head>
-<title>Creating a simple build pipeline with Tekton // Bittrance blog</title>
-<link rel="shortcut icon" href=/favicon.ico>
-<meta charset=utf-8>
-<meta name=generator content="Hugo 0.88.1">
-<meta name=viewport content="width=device-width,initial-scale=1">
-<meta name=author content="Bittrance">
-<meta name=description content>
-<link rel=stylesheet href=https://bittrance.github.io/css/main.min.afd5733f6d39365ab553b096081d5963acb9415e188f217556309f7070ab52cd.css>
-<meta name=twitter:card content="summary">
-<meta name=twitter:title content="Creating a simple build pipeline with Tekton">
-<meta name=twitter:description content="Tekton is a continuous integration and delivery platform on top of Kubernetes. This blog post will
-explore Tekton&rsquo;s feature set by way of converting a GitHub Actions workflow into a Tekton Pipeline">
-<meta property="og:title" content="Creating a simple build pipeline with Tekton">
-<meta property="og:description" content="Tekton is a continuous integration and delivery platform on top of Kubernetes. This blog post will
-explore Tekton&rsquo;s feature set by way of converting a GitHub Actions workflow into a Tekton Pipeline">
-<meta property="og:type" content="article">
-<meta property="og:url" content="https://bittrance.github.io/posts/simple-pipeline-with-tekton/"><meta property="article:section" content="posts">
-<meta property="article:published_time" content="2021-04-19T21:48:09+02:00">
-<meta property="article:modified_time" content="2021-04-20T22:08:00+02:00">
-</head>
-<body>
-<header class=app-header>
-<a href=https://bittrance.github.io/><img class=app-header-avatar src=/bittrance.jpeg alt=Bittrance></a>
-<h1>Bittrance blog</h1>
-<p>DevOps blog with focus on distributed systems and resiliency engineering.</p>
-<div class=app-header-social>
-<a href=https://github.com/bittrance target=_blank rel="noreferrer noopener"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-github"><title>My Github</title><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37.0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44.0 0020 4.77 5.07 5.07.0 0019.91 1S18.73.65 16 2.48a13.38 13.38.0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07.0 005 4.77 5.44 5.44.0 003.5 8.55c0 5.42 3.3 6.61 6.44 7A3.37 3.37.0 009 18.13V22"/></svg>
-</a>
-</div>
-</header>
-<main class=app-container>
-<article class=post>
-<header class=post-header>
-<h1 class=post-title>Creating a simple build pipeline with Tekton</h1>
-<div class=post-meta>
-<div><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-calendar"><title>calendar</title><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-Apr 19, 2021
-</div>
-<div><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-clock"><title>clock</title><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-6 min read
-</div>
-</div>
-</header>
-<div class=post-content>
-<blockquote>
-<p><em>Note: This article uses lots of Tekton beta features. Should you discover it in 6 months from now, it is highly likely that something has changed.</em></p>
-</blockquote>
-<p><a href=https://tekton.dev>Tekton</a> is a continuous integration and delivery platform on top of Kubernetes. It is still under intensive development, but is shaping up to be a real Argo Workflow killer. This blog post will explore Tekton&rsquo;s feature set by way of converting a GitHub Actions workflow into a Tekton Pipeline. It is meant to be the first of a series of Tekton-centered blog posts.</p>
-<p>This post is laid out as a step-by-step instruction. If you want to follow along and do not already have a suitable Kubernetes cluster on hand, you can <a href=/posts/install-kind>install Kind</a> which will give you a good starting point.</p>
-<h2 id=the-tekton-data-model>The Tekton data model</h2>
-<p>Tekton has two main primitives: <a href=https://tekton.dev/docs/pipelines/pipelines/>Pipelines</a> and <a href=https://tekton.dev/docs/pipelines/tasks/>Tasks</a>. A Pipeline is akin to a GitHub Actions workflow (or a Bitbucket Pipeline) and Tasks are similar to the steps in a job in that workflow. However, unlike in those other platforms, a Tekton Task is a first-class citizen and Pipelines refer (i.e. invoke) to it rather than include its full description. Pipelines and Tasks are represented by Kubernetes custom resources. Tekton will have a &ldquo;marketplace&rdquo; called <a href=https://hub.tekton.dev/>Tekton Hub</a> where standard tasks and pipelines can be published. The site is operational today, if still a bit rough.</p>
-<p>We also need a third Tekton concept to complete this blog post: each Task is technically one or more container executions and as any container, it has an ephemeral file system, so we need a directory that can be shared between tasks. Such a directory is called a <a href=https://tekton.dev/docs/pipelines/workspaces/>Workspace</a>.</p>
-<p>This model is already a little more light-weight than GitHub Actions or Bitbucket Pipelines. However, reuse in CI/CD often amounts to repeating fragments of pipelines, which those models do not support well. For example, we may be disciplined always build and test our frontends the same way, but not all services have a frontend. Tekton will introduce the ability to have <a href=https://github.com/tektoncd/community/blob/main/teps/0056-pipelines-in-pipelines.md>sub-pipelines</a> which is likely to make reuse across pipelines much more practical.</p>
-<h2 id=installing-tekton>Installing Tekton</h2>
-<p>As a good citizen of Kubernetes-land, Tekton is distributed as a set of manifests. Let&rsquo;s install Tekton and its user interface into the test cluster.</p>
-<div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>kubectl apply -f https://storage.googleapis.com/tekton-releases/pipeline/previous/v0.23.0/release.yaml
-kubectl apply -f https://github.com/tektoncd/dashboard/releases/download/v0.16.0/tekton-dashboard-release.yaml
-</code></pre></div><p>We want to access the Tekton UI during this blog post. If your test cluster does not expose services to the outside world, you can install an ingress:</p>
-<div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-yaml data-lang=yaml><span style=color:#f92672>apiVersion</span>: <span style=color:#ae81ff>networking.k8s.io/v1beta1</span>
-<span style=color:#f92672>kind</span>: <span style=color:#ae81ff>Ingress</span>
-<span style=color:#f92672>metadata</span>:
-  <span style=color:#f92672>name</span>: <span style=color:#ae81ff>tekton-dashboard</span>
-  <span style=color:#f92672>namespace</span>: <span style=color:#ae81ff>tekton-pipelines</span>
-  <span style=color:#f92672>annotations</span>:
-    <span style=color:#f92672>kubernetes.io/ingress.class</span>: <span style=color:#ae81ff>ambassador</span>
-<span style=color:#f92672>spec</span>:
-  <span style=color:#f92672>rules</span>:
-    - <span style=color:#f92672>host</span>: <span style=color:#ae81ff>tekton.lvh.me</span>
-      <span style=color:#f92672>http</span>:
-        <span style=color:#f92672>paths</span>:
-          - <span style=color:#f92672>path</span>: <span style=color:#ae81ff>/</span>
-            <span style=color:#f92672>backend</span>:
-              <span style=color:#f92672>serviceName</span>: <span style=color:#ae81ff>tekton-dashboard</span>
-              <span style=color:#f92672>servicePort</span>: <span style=color:#ae81ff>9097</span>
-
-</code></pre></div>
-<p>There is also a <a href=https://github.com/tektoncd/cli>Tekton cli</a> tool. However, it does not provide a lot of benefit for this instruction, so I wil skip it and use kubectl directly.</p>
-<h2 id=lets-write-a-pipeline>Let&rsquo;s write a pipeline</h2>
-<p>We need a non-trivial project so that we can explore difficulties that tend to arise when writing build pipelines. This and following blog posts will try to recreate the <a href=https://github.com/bittrance/striv/blob/cfac501a45db4c58ae526a3e58242c6245305624/.github/workflows/default-test.yml>striv master pipeline</a>. Striv is a typical webapp with a Vue-based frontend and a Python-based backend which keeps its state in MySQL or Postgres - in other words a bog-standard single-page application (SPA). Its main Github action contains the following steps:</p>
-<ol>
-<li>Run node unit tests for the frontend (<code>npm run test:unit</code>)</li>
-<li>Run python unit and integration tests for the backend (<code>pytest</code>)</li>
-<li>Build and push a Docker image (<code>docker build</code> and <code>docker push</code>)</li>
-</ol>
-<h2 id=our-first-task---checkout>Our first task - checkout</h2>
-<p>The Tekton pipeline is a Kubernetes custom resource with <code>kind: Pipeline</code>. It describes a series of tasks to perform. The first task our pipeline will have to do is to check out the source code that we want to test and build. Tekton provides a standard task for checking out <a href=https://hub.tekton.dev/tekton/task/git-clone>sources from GitHub</a> that we can install in our cluster:</p>
-<div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>kubectl apply -f https://raw.githubusercontent.com/tektoncd/catalog/main/task/git-clone/0.3/git-clone.yaml
-</code></pre></div><p>This allows us to write a very simple pipeline:</p>
-<div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-yaml data-lang=yaml><span style=color:#f92672>apiVersion</span>: <span style=color:#ae81ff>tekton.dev/v1beta1</span>
-<span style=color:#f92672>kind</span>: <span style=color:#ae81ff>Pipeline</span>
-<span style=color:#f92672>metadata</span>:
-  <span style=color:#f92672>name</span>: <span style=color:#ae81ff>deploy-striv</span>
-<span style=color:#f92672>spec</span>:
-  <span style=color:#f92672>workspaces</span>:
-    - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>striv-workspace</span> <span style=color:#75715e># The invoker will need to provide this workspace</span>
-  <span style=color:#f92672>tasks</span>:
-    - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>checkout</span>
-      <span style=color:#f92672>taskRef</span>:
-        <span style=color:#75715e># The standard task we installed above</span>
-        <span style=color:#f92672>name</span>: <span style=color:#ae81ff>git-clone</span>
-        <span style=color:#f92672>kind</span>: <span style=color:#ae81ff>Task</span>
-      <span style=color:#f92672>workspaces</span>:
-        - <span style=color:#75715e># This task requires us to provide a workspace where the code</span>
-          <span style=color:#75715e># should be checked out. Here we tell Tekton to provide our </span>
-          <span style=color:#75715e># &#34;striv-workspace&#34; workspace as the task&#39;s &#34;output&#34; workspace.</span>
-          <span style=color:#f92672>name</span>: <span style=color:#ae81ff>output</span>
-          <span style=color:#f92672>workspace</span>: <span style=color:#ae81ff>striv-workspace</span>
-      <span style=color:#f92672>params</span>:
-        - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>url</span>
-          <span style=color:#f92672>value</span>: <span style=color:#ae81ff>https://github.com/bittrance/striv</span>
-        - <span style=color:#75715e># In order for this blog post to be repeatable, we refer to a </span>
-          <span style=color:#75715e># particular revision.</span>
-          <span style=color:#f92672>name</span>: <span style=color:#ae81ff>revision</span>
-          <span style=color:#f92672>value</span>: <span style=color:#ae81ff>kubernetes</span>
-</code></pre></div><p>The above example builds a specific branch so that it is repeatable despite further developments to Striv. That is not so useful in real life, but we will get back to parameterizing this in a later blog post.</p>
-<h2 id=run-frontend-unit-tests>Run frontend unit tests</h2>
-<p>The next step in our pipeline is to run the frontend unit tests. This too can user a <a href=https://hub.tekton.dev/tekton/task/npm>standard npm task</a> that we can install in our cluster:</p>
-<div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash>kubectl apply -f https://raw.githubusercontent.com/tektoncd/catalog/main/task/npm/0.1/npm.yaml
-</code></pre></div><p>With this installed, we can add two tasks to our pipeline:</p>
-<div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-yaml data-lang=yaml>    - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>install-frontend-dependencies</span>
-      <span style=color:#f92672>runAfter</span>: [<span style=color:#ae81ff>checkout]</span> <span style=color:#75715e># Task dependency within this pipeline</span>
-      <span style=color:#f92672>taskRef</span>:
-        <span style=color:#f92672>name</span>: <span style=color:#ae81ff>npm</span>
-        <span style=color:#f92672>kind</span>: <span style=color:#ae81ff>Task</span>
-      <span style=color:#f92672>workspaces</span>:
-        - <span style=color:#75715e># The task above called its workspace &#34;output&#34; but this one calls </span>
-          <span style=color:#75715e># it &#34;source&#34;. Let&#39;s hope a convention takes hold...</span>
-          <span style=color:#f92672>name</span>: <span style=color:#ae81ff>source</span>
-          <span style=color:#f92672>workspace</span>: <span style=color:#ae81ff>striv-workspace</span>
-      <span style=color:#f92672>params</span>:
-        - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>IMAGE</span>
-          <span style=color:#f92672>value</span>: <span style=color:#ae81ff>node:15.3</span>
-        - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>ARGS</span>
-          <span style=color:#f92672>value</span>: [<span style=color:#ae81ff>clean-install]</span> <span style=color:#75715e># i.e. npm clean-install</span>
-    - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>test-frontend</span>
-      <span style=color:#f92672>runAfter</span>: [<span style=color:#ae81ff>install-frontend-dependencies]</span>
-      <span style=color:#f92672>taskRef</span>:
-        <span style=color:#f92672>name</span>: <span style=color:#ae81ff>npm</span>
-        <span style=color:#f92672>kind</span>: <span style=color:#ae81ff>Task</span>
-      <span style=color:#f92672>workspaces</span>:
-        - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>source</span>
-          <span style=color:#f92672>workspace</span>: <span style=color:#ae81ff>striv-workspace</span>
-      <span style=color:#f92672>params</span>:
-        - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>IMAGE</span>
-          <span style=color:#f92672>value</span>: <span style=color:#ae81ff>node:15.3</span>
-        - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>ARGS</span>
-          <span style=color:#f92672>value</span>: [<span style=color:#ae81ff>run, test:unit]</span> <span style=color:#75715e># i.e. npm run test:unit</span>
-</code></pre></div><p>By default, all pipeline tasks are run in parallel, but running tests cannot be performed until the source code is checked out, so we need to be able to define task dependencies. This is done using the <code>runAfter</code> directive. This gives us a simple DAG:</p>
-<pre tabindex=0><code>checkout &lt;- install-frontend-dependencies &lt;- test-frontend
-</code></pre><h2 id=testing-the-pipeline>Testing the pipeline</h2>
-<p>There are more steps to complete before we are done, but we should make sure our pipeline works so far! You can cut together the sections above, or you can download the <a href=/simple-pipeline-with-tekton/deploy-striv.yaml>deply-striv</a> pipeline and apply it to your cluster.</p>
-<p>When you want to invoke a pipeline, you create another custom resource, called a PipelineRun. Executing the pipeline manually helps demonstrate how Tekton works. In the really real world, this should be performed automatically on pushing to the Git repository, but more on that in a later blog post. The Tekton UI cannot yet create new PipelineRun objects, so we create and apply one manually to the cluster:</p>
-<div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-yaml data-lang=yaml><span style=color:#f92672>apiVersion</span>: <span style=color:#ae81ff>tekton.dev/v1beta1</span>
-<span style=color:#f92672>kind</span>: <span style=color:#ae81ff>PipelineRun</span>
-<span style=color:#f92672>metadata</span>:
-  <span style=color:#f92672>name</span>: <span style=color:#ae81ff>deploy-striv-run-1</span>
-<span style=color:#f92672>spec</span>:
-  <span style=color:#f92672>pipelineRef</span>:
-    <span style=color:#f92672>name</span>: <span style=color:#ae81ff>deploy-striv</span> <span style=color:#75715e># We want to run this pipeline</span>
-  <span style=color:#f92672>workspaces</span>:
-    - <span style=color:#75715e># This describes how to provide the workspace that the pipeline requires</span>
-      <span style=color:#f92672>name</span>: <span style=color:#ae81ff>striv-workspace</span>
-      <span style=color:#f92672>volumeClaimTemplate</span>:
-        <span style=color:#f92672>spec</span>:
-          <span style=color:#f92672>accessModes</span>:
-            - <span style=color:#ae81ff>ReadWriteOnce</span>
-          <span style=color:#f92672>resources</span>:
-            <span style=color:#f92672>requests</span>:
-              <span style=color:#f92672>storage</span>: <span style=color:#ae81ff>1Gi</span>
-
-</code></pre></div>
-<p>Navigating to the <a href=http://tekton.lvh.me>Tekton UI</a>, if all went well, the run will be green:</p>
-<p><img src=/simple-pipeline-with-tekton/deploy-striv-run-1.png alt="deploy-striv run successful" title="deploy-striv run successful"></p>
-<p>Each task run by the pipeline is just a pod. We can use <code>kubectl get pods</code> to inspect them:</p>
-<pre tabindex=0><code>NAME                                                              READY   STATUS      RESTARTS   AGE
+<!doctype html><html lang=en-us><head><title>Creating a simple build pipeline with Tekton // Bittrance blog</title><link rel="shortcut icon" href=/favicon.ico><meta charset=utf-8><meta name=generator content="Hugo 0.96.0"><meta name=viewport content="width=device-width,initial-scale=1"><meta name=author content="Bittrance"><meta name=description content><link rel=stylesheet href=https://bittrance.github.io/css/main.min.4639652e53d7c522a16b943011b619fd746bc6fb5fb4b8d6ced8387535c7b364.css><meta name=twitter:card content="summary"><meta name=twitter:title content="Creating a simple build pipeline with Tekton"><meta name=twitter:description content="Tekton is a continuous integration and delivery platform on top of Kubernetes. This blog post will
+explore Tekton&rsquo;s feature set by way of converting a GitHub Actions workflow into a Tekton Pipeline"><meta property="og:title" content="Creating a simple build pipeline with Tekton"><meta property="og:description" content="Tekton is a continuous integration and delivery platform on top of Kubernetes. This blog post will
+explore Tekton&rsquo;s feature set by way of converting a GitHub Actions workflow into a Tekton Pipeline"><meta property="og:type" content="article"><meta property="og:url" content="https://bittrance.github.io/posts/simple-pipeline-with-tekton/"><meta property="article:section" content="posts"><meta property="article:published_time" content="2021-04-19T21:48:09+02:00"><meta property="article:modified_time" content="2021-04-20T22:08:00+02:00"></head><body><header class=app-header><a href=https://bittrance.github.io/><img class=app-header-avatar src=/bittrance.jpeg alt=Bittrance></a><h1>Bittrance blog</h1><p>DevOps blog with focus on distributed systems and resiliency engineering.</p><div class=app-header-social><a href=https://github.com/bittrance target=_blank rel="noreferrer noopener"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-github"><title>My Github</title><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37.0 00-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44.0 0020 4.77 5.07 5.07.0 0019.91 1S18.73.65 16 2.48a13.38 13.38.0 00-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07.0 005 4.77 5.44 5.44.0 003.5 8.55c0 5.42 3.3 6.61 6.44 7A3.37 3.37.0 009 18.13V22"/></svg></a></div></header><main class=app-container><article class=post><header class=post-header><h1 class=post-title>Creating a simple build pipeline with Tekton</h1><div class=post-meta><div><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-calendar"><title>calendar</title><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Apr 19, 2021</div><div><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentcolor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon icon-clock"><title>clock</title><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>6 min read</div></div></header><div class=post-content><blockquote><p><em>Note: This article uses lots of Tekton beta features. Should you discover it in 6 months from now, it is highly likely that something has changed.</em></p></blockquote><p><a href=https://tekton.dev>Tekton</a> is a continuous integration and delivery platform on top of Kubernetes. It is still under intensive development, but is shaping up to be a real Argo Workflow killer. This blog post will explore Tekton&rsquo;s feature set by way of converting a GitHub Actions workflow into a Tekton Pipeline. It is meant to be the first of a series of Tekton-centered blog posts.</p><p>This post is laid out as a step-by-step instruction. If you want to follow along and do not already have a suitable Kubernetes cluster on hand, you can <a href=/posts/install-kind>install Kind</a> which will give you a good starting point.</p><h2 id=the-tekton-data-model>The Tekton data model</h2><p>Tekton has two main primitives: <a href=https://tekton.dev/docs/pipelines/pipelines/>Pipelines</a> and <a href=https://tekton.dev/docs/pipelines/tasks/>Tasks</a>. A Pipeline is akin to a GitHub Actions workflow (or a Bitbucket Pipeline) and Tasks are similar to the steps in a job in that workflow. However, unlike in those other platforms, a Tekton Task is a first-class citizen and Pipelines refer (i.e. invoke) to it rather than include its full description. Pipelines and Tasks are represented by Kubernetes custom resources. Tekton will have a &ldquo;marketplace&rdquo; called <a href=https://hub.tekton.dev/>Tekton Hub</a> where standard tasks and pipelines can be published. The site is operational today, if still a bit rough.</p><p>We also need a third Tekton concept to complete this blog post: each Task is technically one or more container executions and as any container, it has an ephemeral file system, so we need a directory that can be shared between tasks. Such a directory is called a <a href=https://tekton.dev/docs/pipelines/workspaces/>Workspace</a>.</p><p>This model is already a little more light-weight than GitHub Actions or Bitbucket Pipelines. However, reuse in CI/CD often amounts to repeating fragments of pipelines, which those models do not support well. For example, we may be disciplined always build and test our frontends the same way, but not all services have a frontend. Tekton will introduce the ability to have <a href=https://github.com/tektoncd/community/blob/main/teps/0056-pipelines-in-pipelines.md>sub-pipelines</a> which is likely to make reuse across pipelines much more practical.</p><h2 id=installing-tekton>Installing Tekton</h2><p>As a good citizen of Kubernetes-land, Tekton is distributed as a set of manifests. Let&rsquo;s install Tekton and its user interface into the test cluster.</p><div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash><span style=display:flex><span>kubectl apply -f https://storage.googleapis.com/tekton-releases/pipeline/previous/v0.23.0/release.yaml
+</span></span><span style=display:flex><span>kubectl apply -f https://github.com/tektoncd/dashboard/releases/download/v0.16.0/tekton-dashboard-release.yaml
+</span></span></code></pre></div><p>We want to access the Tekton UI during this blog post. If your test cluster does not expose services to the outside world, you can install an ingress:</p><div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-yaml data-lang=yaml><span style=display:flex><span><span style=color:#f92672>apiVersion</span>: <span style=color:#ae81ff>networking.k8s.io/v1beta1</span>
+</span></span><span style=display:flex><span><span style=color:#f92672>kind</span>: <span style=color:#ae81ff>Ingress</span>
+</span></span><span style=display:flex><span><span style=color:#f92672>metadata</span>:
+</span></span><span style=display:flex><span>  <span style=color:#f92672>name</span>: <span style=color:#ae81ff>tekton-dashboard</span>
+</span></span><span style=display:flex><span>  <span style=color:#f92672>namespace</span>: <span style=color:#ae81ff>tekton-pipelines</span>
+</span></span><span style=display:flex><span>  <span style=color:#f92672>annotations</span>:
+</span></span><span style=display:flex><span>    <span style=color:#f92672>kubernetes.io/ingress.class</span>: <span style=color:#ae81ff>ambassador</span>
+</span></span><span style=display:flex><span><span style=color:#f92672>spec</span>:
+</span></span><span style=display:flex><span>  <span style=color:#f92672>rules</span>:
+</span></span><span style=display:flex><span>    - <span style=color:#f92672>host</span>: <span style=color:#ae81ff>tekton.lvh.me</span>
+</span></span><span style=display:flex><span>      <span style=color:#f92672>http</span>:
+</span></span><span style=display:flex><span>        <span style=color:#f92672>paths</span>:
+</span></span><span style=display:flex><span>          - <span style=color:#f92672>path</span>: <span style=color:#ae81ff>/</span>
+</span></span><span style=display:flex><span>            <span style=color:#f92672>backend</span>:
+</span></span><span style=display:flex><span>              <span style=color:#f92672>serviceName</span>: <span style=color:#ae81ff>tekton-dashboard</span>
+</span></span><span style=display:flex><span>              <span style=color:#f92672>servicePort</span>: <span style=color:#ae81ff>9097</span>
+</span></span></code></pre></div><p>There is also a <a href=https://github.com/tektoncd/cli>Tekton cli</a> tool. However, it does not provide a lot of benefit for this instruction, so I wil skip it and use kubectl directly.</p><h2 id=lets-write-a-pipeline>Let&rsquo;s write a pipeline</h2><p>We need a non-trivial project so that we can explore difficulties that tend to arise when writing build pipelines. This and following blog posts will try to recreate the <a href=https://github.com/bittrance/striv/blob/cfac501a45db4c58ae526a3e58242c6245305624/.github/workflows/default-test.yml>striv master pipeline</a>. Striv is a typical webapp with a Vue-based frontend and a Python-based backend which keeps its state in MySQL or Postgres - in other words a bog-standard single-page application (SPA). Its main Github action contains the following steps:</p><ol><li>Run node unit tests for the frontend (<code>npm run test:unit</code>)</li><li>Run python unit and integration tests for the backend (<code>pytest</code>)</li><li>Build and push a Docker image (<code>docker build</code> and <code>docker push</code>)</li></ol><h2 id=our-first-task---checkout>Our first task - checkout</h2><p>The Tekton pipeline is a Kubernetes custom resource with <code>kind: Pipeline</code>. It describes a series of tasks to perform. The first task our pipeline will have to do is to check out the source code that we want to test and build. Tekton provides a standard task for checking out <a href=https://hub.tekton.dev/tekton/task/git-clone>sources from GitHub</a> that we can install in our cluster:</p><div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash><span style=display:flex><span>kubectl apply -f https://raw.githubusercontent.com/tektoncd/catalog/main/task/git-clone/0.3/git-clone.yaml
+</span></span></code></pre></div><p>This allows us to write a very simple pipeline:</p><div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-yaml data-lang=yaml><span style=display:flex><span><span style=color:#f92672>apiVersion</span>: <span style=color:#ae81ff>tekton.dev/v1beta1</span>
+</span></span><span style=display:flex><span><span style=color:#f92672>kind</span>: <span style=color:#ae81ff>Pipeline</span>
+</span></span><span style=display:flex><span><span style=color:#f92672>metadata</span>:
+</span></span><span style=display:flex><span>  <span style=color:#f92672>name</span>: <span style=color:#ae81ff>deploy-striv</span>
+</span></span><span style=display:flex><span><span style=color:#f92672>spec</span>:
+</span></span><span style=display:flex><span>  <span style=color:#f92672>workspaces</span>:
+</span></span><span style=display:flex><span>    - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>striv-workspace</span> <span style=color:#75715e># The invoker will need to provide this workspace</span>
+</span></span><span style=display:flex><span>  <span style=color:#f92672>tasks</span>:
+</span></span><span style=display:flex><span>    - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>checkout</span>
+</span></span><span style=display:flex><span>      <span style=color:#f92672>taskRef</span>:
+</span></span><span style=display:flex><span>        <span style=color:#75715e># The standard task we installed above</span>
+</span></span><span style=display:flex><span>        <span style=color:#f92672>name</span>: <span style=color:#ae81ff>git-clone</span>
+</span></span><span style=display:flex><span>        <span style=color:#f92672>kind</span>: <span style=color:#ae81ff>Task</span>
+</span></span><span style=display:flex><span>      <span style=color:#f92672>workspaces</span>:
+</span></span><span style=display:flex><span>        - <span style=color:#75715e># This task requires us to provide a workspace where the code</span>
+</span></span><span style=display:flex><span>          <span style=color:#75715e># should be checked out. Here we tell Tekton to provide our </span>
+</span></span><span style=display:flex><span>          <span style=color:#75715e># &#34;striv-workspace&#34; workspace as the task&#39;s &#34;output&#34; workspace.</span>
+</span></span><span style=display:flex><span>          <span style=color:#f92672>name</span>: <span style=color:#ae81ff>output</span>
+</span></span><span style=display:flex><span>          <span style=color:#f92672>workspace</span>: <span style=color:#ae81ff>striv-workspace</span>
+</span></span><span style=display:flex><span>      <span style=color:#f92672>params</span>:
+</span></span><span style=display:flex><span>        - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>url</span>
+</span></span><span style=display:flex><span>          <span style=color:#f92672>value</span>: <span style=color:#ae81ff>https://github.com/bittrance/striv</span>
+</span></span><span style=display:flex><span>        - <span style=color:#75715e># In order for this blog post to be repeatable, we refer to a </span>
+</span></span><span style=display:flex><span>          <span style=color:#75715e># particular revision.</span>
+</span></span><span style=display:flex><span>          <span style=color:#f92672>name</span>: <span style=color:#ae81ff>revision</span>
+</span></span><span style=display:flex><span>          <span style=color:#f92672>value</span>: <span style=color:#ae81ff>kubernetes</span>
+</span></span></code></pre></div><p>The above example builds a specific branch so that it is repeatable despite further developments to Striv. That is not so useful in real life, but we will get back to parameterizing this in a later blog post.</p><h2 id=run-frontend-unit-tests>Run frontend unit tests</h2><p>The next step in our pipeline is to run the frontend unit tests. This too can user a <a href=https://hub.tekton.dev/tekton/task/npm>standard npm task</a> that we can install in our cluster:</p><div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-bash data-lang=bash><span style=display:flex><span>kubectl apply -f https://raw.githubusercontent.com/tektoncd/catalog/main/task/npm/0.1/npm.yaml
+</span></span></code></pre></div><p>With this installed, we can add two tasks to our pipeline:</p><div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-yaml data-lang=yaml><span style=display:flex><span>    - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>install-frontend-dependencies</span>
+</span></span><span style=display:flex><span>      <span style=color:#f92672>runAfter</span>: [<span style=color:#ae81ff>checkout]</span> <span style=color:#75715e># Task dependency within this pipeline</span>
+</span></span><span style=display:flex><span>      <span style=color:#f92672>taskRef</span>:
+</span></span><span style=display:flex><span>        <span style=color:#f92672>name</span>: <span style=color:#ae81ff>npm</span>
+</span></span><span style=display:flex><span>        <span style=color:#f92672>kind</span>: <span style=color:#ae81ff>Task</span>
+</span></span><span style=display:flex><span>      <span style=color:#f92672>workspaces</span>:
+</span></span><span style=display:flex><span>        - <span style=color:#75715e># The task above called its workspace &#34;output&#34; but this one calls </span>
+</span></span><span style=display:flex><span>          <span style=color:#75715e># it &#34;source&#34;. Let&#39;s hope a convention takes hold...</span>
+</span></span><span style=display:flex><span>          <span style=color:#f92672>name</span>: <span style=color:#ae81ff>source</span>
+</span></span><span style=display:flex><span>          <span style=color:#f92672>workspace</span>: <span style=color:#ae81ff>striv-workspace</span>
+</span></span><span style=display:flex><span>      <span style=color:#f92672>params</span>:
+</span></span><span style=display:flex><span>        - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>IMAGE</span>
+</span></span><span style=display:flex><span>          <span style=color:#f92672>value</span>: <span style=color:#ae81ff>node:15.3</span>
+</span></span><span style=display:flex><span>        - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>ARGS</span>
+</span></span><span style=display:flex><span>          <span style=color:#f92672>value</span>: [<span style=color:#ae81ff>clean-install]</span> <span style=color:#75715e># i.e. npm clean-install</span>
+</span></span><span style=display:flex><span>    - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>test-frontend</span>
+</span></span><span style=display:flex><span>      <span style=color:#f92672>runAfter</span>: [<span style=color:#ae81ff>install-frontend-dependencies]</span>
+</span></span><span style=display:flex><span>      <span style=color:#f92672>taskRef</span>:
+</span></span><span style=display:flex><span>        <span style=color:#f92672>name</span>: <span style=color:#ae81ff>npm</span>
+</span></span><span style=display:flex><span>        <span style=color:#f92672>kind</span>: <span style=color:#ae81ff>Task</span>
+</span></span><span style=display:flex><span>      <span style=color:#f92672>workspaces</span>:
+</span></span><span style=display:flex><span>        - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>source</span>
+</span></span><span style=display:flex><span>          <span style=color:#f92672>workspace</span>: <span style=color:#ae81ff>striv-workspace</span>
+</span></span><span style=display:flex><span>      <span style=color:#f92672>params</span>:
+</span></span><span style=display:flex><span>        - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>IMAGE</span>
+</span></span><span style=display:flex><span>          <span style=color:#f92672>value</span>: <span style=color:#ae81ff>node:15.3</span>
+</span></span><span style=display:flex><span>        - <span style=color:#f92672>name</span>: <span style=color:#ae81ff>ARGS</span>
+</span></span><span style=display:flex><span>          <span style=color:#f92672>value</span>: [<span style=color:#ae81ff>run, test:unit]</span> <span style=color:#75715e># i.e. npm run test:unit</span>
+</span></span></code></pre></div><p>By default, all pipeline tasks are run in parallel, but running tests cannot be performed until the source code is checked out, so we need to be able to define task dependencies. This is done using the <code>runAfter</code> directive. This gives us a simple DAG:</p><pre tabindex=0><code>checkout &lt;- install-frontend-dependencies &lt;- test-frontend
+</code></pre><h2 id=testing-the-pipeline>Testing the pipeline</h2><p>There are more steps to complete before we are done, but we should make sure our pipeline works so far! You can cut together the sections above, or you can download the <a href=/simple-pipeline-with-tekton/deploy-striv.yaml>deply-striv</a> pipeline and apply it to your cluster.</p><p>When you want to invoke a pipeline, you create another custom resource, called a PipelineRun. Executing the pipeline manually helps demonstrate how Tekton works. In the really real world, this should be performed automatically on pushing to the Git repository, but more on that in a later blog post. The Tekton UI cannot yet create new PipelineRun objects, so we create and apply one manually to the cluster:</p><div class=highlight><pre tabindex=0 style=color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4><code class=language-yaml data-lang=yaml><span style=display:flex><span><span style=color:#f92672>apiVersion</span>: <span style=color:#ae81ff>tekton.dev/v1beta1</span>
+</span></span><span style=display:flex><span><span style=color:#f92672>kind</span>: <span style=color:#ae81ff>PipelineRun</span>
+</span></span><span style=display:flex><span><span style=color:#f92672>metadata</span>:
+</span></span><span style=display:flex><span>  <span style=color:#f92672>name</span>: <span style=color:#ae81ff>deploy-striv-run-1</span>
+</span></span><span style=display:flex><span><span style=color:#f92672>spec</span>:
+</span></span><span style=display:flex><span>  <span style=color:#f92672>pipelineRef</span>:
+</span></span><span style=display:flex><span>    <span style=color:#f92672>name</span>: <span style=color:#ae81ff>deploy-striv</span> <span style=color:#75715e># We want to run this pipeline</span>
+</span></span><span style=display:flex><span>  <span style=color:#f92672>workspaces</span>:
+</span></span><span style=display:flex><span>    - <span style=color:#75715e># This describes how to provide the workspace that the pipeline requires</span>
+</span></span><span style=display:flex><span>      <span style=color:#f92672>name</span>: <span style=color:#ae81ff>striv-workspace</span>
+</span></span><span style=display:flex><span>      <span style=color:#f92672>volumeClaimTemplate</span>:
+</span></span><span style=display:flex><span>        <span style=color:#f92672>spec</span>:
+</span></span><span style=display:flex><span>          <span style=color:#f92672>accessModes</span>:
+</span></span><span style=display:flex><span>            - <span style=color:#ae81ff>ReadWriteOnce</span>
+</span></span><span style=display:flex><span>          <span style=color:#f92672>resources</span>:
+</span></span><span style=display:flex><span>            <span style=color:#f92672>requests</span>:
+</span></span><span style=display:flex><span>              <span style=color:#f92672>storage</span>: <span style=color:#ae81ff>1Gi</span>
+</span></span></code></pre></div><p>Navigating to the <a href=http://tekton.lvh.me>Tekton UI</a>, if all went well, the run will be green:</p><p><img src=/simple-pipeline-with-tekton/deploy-striv-run-1.png alt="deploy-striv run successful" title="deploy-striv run successful"></p><p>Each task run by the pipeline is just a pod. We can use <code>kubectl get pods</code> to inspect them:</p><pre tabindex=0><code>NAME                                                              READY   STATUS      RESTARTS   AGE
 deploy-striv-run-1-checkout-hmvxb-pod-fqx8b                       0/1     Completed   0          45s
 deploy-striv-run-1-install-frontend-dependencies-2q6nn-po-dzfpb   0/1     Completed   0          31s
 deploy-striv-run-1-test-frontend-c2779-pod-z642x                  0/1     Completed   0           8s
-</code></pre><p>You can similarly request logs and terminate errant tasks.</p>
-<h2 id=next-step>Next step</h2>
-<p>This blog post has shown how to get started with using Tekton for continuous integration. The next step to run the backend tests, see the next blog post in this series: <a href=/posts/extending-our-tekton-pipeline/>Extending Our Tekton Pipeline</a>.</p>
-</div>
-<div class=post-footer>
-</div>
-</article>
-</main>
-</body>
-</html>
+</code></pre><p>You can similarly request logs and terminate errant tasks.</p><h2 id=next-step>Next step</h2><p>This blog post has shown how to get started with using Tekton for continuous integration. The next step to run the backend tests, see the next blog post in this series: <a href=/posts/extending-our-tekton-pipeline/>Extending Our Tekton Pipeline</a>.</p></div><div class=post-footer></div></article></main></body></html>
