@@ -1,3 +1,31 @@
 .post-title {
     font-size: 2.5em;
 }
+
+.post-meta {
+    margin-bottom: 1em;
+}
+
+@media (max-width: 500px) {
+   .app-header {
+       padding: 1rem;
+   }
+
+   .app-container {
+       padding: 1rem;
+   }
+}
+
+p {
+    margin-top: 0;
+}
+
+h2 {
+    margin-top: 1.5em;
+    margin-bottom: .25em;
+}
+
+h3 {
+    margin-top: 1.5em;
+    margin-bottom: .35em;
+}
