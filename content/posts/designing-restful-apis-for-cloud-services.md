@@ -8,7 +8,7 @@ HTTP has become the de-facto standard transport protocol for programmatic commun
 
 > _[When a] request is made via a RESTful API, [the response is] a representation of the state of the resource[.]_ -- https://www.redhat.com/en/topics/api/what-is-a-rest-api
 
-Let's decrypt that: "representation" has come to mean JSON, while "state" refers to those ubiquitous (and unwieldy) relational databases and "resource" is an object from our domain model.
+Let's decrypt that: "representation" has come to mean JSON, while "state" refers to those ubiquitous (and unwieldy) relational databases and "resource" is an object from our [domain model](https://www.scaledagileframework.com/domain-modeling/).
 
 The literature on API design will exhort you to analyze the problem space and consider your design choices carefully. Indeed, design choices will significantly impact the lifecycle of APIs that are part of a software-as-a-service offering. However, when designing a software-as-a-service API, we do not really know the details of future usage. The goal must therefore be to maximize our freedom to evolve the APIs without having to change the formal or informal contracts that regulate their usage. The API should become a facade behind which we are free to evolve the implementation.
 
@@ -21,6 +21,8 @@ The guidelines below should be considered in addition to established good practi
 - http://www.restfulwebapis.org/
 - https://restfulapi.net/rest-api-design-tutorial-with-example/
 - https://docs.microsoft.com/en-us/azure/architecture/best-practices/api-design
+- https://github.com/microsoft/api-guidelines/blob/vNext/Guidelines.md
+- https://opensource.zalando.com/restful-api-guidelines/
 
 Note that these articles and the recommendations are not in total harmony, for example when it comes to the extent to which use cases should be allowed to influence API design.
 
@@ -32,11 +34,11 @@ Additionally, there are a number of good practices which are relevant when build
 
 ### Your API is a collection of nouns
 
-_The most central tenet of REST bears repeating: your API is expressed in nouns, each of which is a class of resources. (If expressing your API in terms of nouns feels contrived, you may want to consider an RPC style API instead.) Those resources are queried and manipulated using basic ["CRUD"](https://developer.mozilla.org/en-US/docs/Glossary/CRUD) operations. A car sharing service might expose `GET /vehicles` for finding available vehicles and an individual vehicle would be `GET /vehicles/:id`._
+_The most central tenet of REST bears repeating: your API is expressed in nouns, each of which is a class of resources. Resources are uniquely identified by their URI domain name plus path. Those resources are queried and manipulated using basic ["CRUD"](https://developer.mozilla.org/en-US/docs/Glossary/CRUD) operations. A car sharing service might expose `GET /vehicles` for finding available vehicles and an individual vehicle would be `GET /vehicles/:id`._
 
 **Motivation**: Focusing on resources reduces the risk of implementation details bleeding into the API, which means that it becomes easier to change the backing implementation. This is akin to Kant's [Der ding an sich](https://en.wikipedia.org/wiki/Thing-in-itself), in that we are trying to discover what properties a resource should reasonably have to match the sum of all observations.
 
-An important consequence of realizing a service as a series of nouns is that in order to be able to keep to CRUD operations, we may need to introduce new nouns (i.e. sub-resource), for example giving cars "services" so that we have `POST /vehicles/:id/services/heater` for activating the car's heater. With this design, the developer using the API knows that discovery will be `GET /vehicles/:id/services` and heater status can be checked with `GET /vehicles/:id/services/heater`. "CRUD plus noun" becomes a contract building blocks.
+An important consequence of realizing a service as a series of nouns is that in order to be able to keep to CRUD operations, we may need to introduce new nouns (i.e. sub-resource), for example giving cars "services" so that we have `POST /vehicles/:id/services/heater` for activating the car's heater. With this design, the developer using the API knows that discovery will be `GET /vehicles/:id/services` and heater status can be checked with `GET /vehicles/:id/services/heater`. "CRUD plus noun" gives us a set of contract building blocks.
 
 ### The caller is responsible for the use case
 
@@ -66,7 +68,7 @@ A service typically starts small, as a single process exposing all your endpoint
 
 ### JSON objects are maps
 
-_Adding properties to any returned object is considered a non-breaking change. API docs should point out that properties are new. Similarly, an API can start accepting new optional query parameters on the URL or properties in the input body or add HTTP headers in either direction without being considered breaking._
+_Adding properties to any returned object is considered a non-breaking change. Similarly, an API can start accepting new optional query parameters on the URL or properties in the input body or add HTTP headers in either direction without being considered breaking._
 
 **Motivation**: REST fundamentally limits us to CRUD and behavior will be implicit from the resource state. In order to implement new behavior it follows that we will over time introduce new properties which controls that behavior.
 
@@ -75,6 +77,8 @@ _Adding properties to any returned object is considered a non-breaking change. A
 _The URI should contain a version number. In [semver](https://semver.org/) terms, this is a "major" version and we use it to signal breaking changes. Given that we have the ability to extend input and output (see [JSON objects are maps](#json-objects-are-maps)), it should be possible to accommodate most "minor" changes within existing APIs. Ideally, resources with different versions have an implicit relation. For example, if we serve both `GET /v1/customers/acme` and `GET /v2/customers/acme`, they refer to the same customer._
 
 **Motivation**: Versions in the URI serve two purposes. First, it signals that one resource should be preferred over another. Second, enables us to write new implementations of a service incrementally.
+
+The example above uses a path element to name the major version, but you could equally include it in the domain name of the service, e.g. `https://api-v1.example.com/customers/acme`.
 
 ### Authorization is based on method + resource
 
