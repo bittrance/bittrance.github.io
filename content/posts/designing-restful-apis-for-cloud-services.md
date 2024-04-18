@@ -1,8 +1,27 @@
 ---
 title: Designing RESTful APIs for cloud services
 date: 2022-04-08T13:49:00+02:00
-summary: ...
+draft: false
+summary: >
+  Much has been written about basic REST API design, but most guides
+  stop short of providing higher-level recommendations. This post
+  proposes and motivates a set of guidelines for RESTful APIs (and by
+  extension their contracts) intended to maximize their life span and
+  support rapid evolution throughout it.
+authors:
+  - Anders Qvist
+tags:
+  - api
+  - rest
+  - http
+  - design
+keywords:
+  - api
+  - rest
+  - http
+  - design
 ---
+Originally posted at https://xenitab.github.io/blog/.
 
 HTTP has become the de-facto standard transport protocol for programmatic communication in software-as-a-service offerings. This mostly entails publishing request-response style APIs. We often refer to these APIs as "RESTful APIs":
 

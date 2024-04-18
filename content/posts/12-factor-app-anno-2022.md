@@ -1,11 +1,12 @@
 ---
 title: Twelve-factor app anno 2022
-description: >
+summary: >
   The Twelve-factor app methodology turns 10. This blog posts re-evaluates 
   the original factors against a decade of experience with 
   software-as-a-service development and the maturing of serverless 
   development.
-authors: andersq
+authors:
+  - Anders Qvist
 tags:
   - 12-factor
   - devops
@@ -14,7 +15,11 @@ keywords:
   - 12-factor
   - devops
   - serverless
+date: 2022-02-23T15:11:00+02:00
+draft: false
 ---
+
+Originally posted at https://xenitab.github.io/blog/.
 
 [The Twelve-factor app](https://12factor.net/) is a methodology for building software-as-a-service apps that was first formulated by developers associated with Heroku. It's been ten years since the first presentation of this methodology. Despite the criticism that it is only applicable to Heroku and similar webapp services, it remains a relevant yard stick for software-as-a-service development. Some of its tenets have been incorporated into Docker and thence into OCI, effectively making them the law of container-land. This blog post looks at each of the twelve factors and tries to evaluate whether they remain relevant or whether they need updating.
 
