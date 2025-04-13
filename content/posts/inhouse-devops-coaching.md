@@ -1,6 +1,6 @@
 ---
 title: In-house cloud developer coaching for IT staff
-date: 2022-05-26T12:32:00+02:00
+date: 2024-05-26T12:32:00+02:00
 draft: false
 summary: >
 authors:
