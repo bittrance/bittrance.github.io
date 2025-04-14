@@ -12,6 +12,10 @@ darkestColor = "#300030"
 lightColor = "#f5e3e0"
 lightestColor = "#9090c0"
 primaryColor = "#8080d0"
+[[menu.main]]
+identifier = "tags"
+name = "Tags"
+url = "/tags/"
 [[params.social]]
 icon = "github"
 name = "My Github"
