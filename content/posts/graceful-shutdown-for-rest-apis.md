@@ -92,11 +92,11 @@ So much for workable shutdown strategies for persistent connections. What do exi
 | REST framework | Possible shutdown behavior | How to get it |
 | ---- | ---- | ---- |
 | Axum (Rust) | immediate shutdown | `axum::serve(...).with_graceful_shutdown(...)` |
-| Express (node.js) | ... | ... |
+| Express (node.js) | immediate shutdown | Use dependency terminus |
 | Flask/Gunicorn (Python) | immediate shutdown | `gunicorn --graceful-timeout <sec>` |
-| Gin (Golang) | ... | ... |
+| Gin (Golang) | immediate shutdown | roll your own with `http.Server.Shutdown()` |
 | Spring boot/Tomcat (Java) | one more request | Switch to Jetty |
-| quarkus (Java) | ... | ... |
+| quarkus (Java) | imperfect one more request | set `quarkus.graceful.timeout` |
 
 ### Axum (Rust)
 
